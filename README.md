@@ -60,6 +60,53 @@ uvicorn backend.main:app --reload
 
 Open http://127.0.0.1:8000 for the dashboard.
 
+## Run with Docker (local)
+
+**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or plain Docker + Compose plugin) installed and running.
+
+1. **Clone the repo and cd into it** (skip if you already have it locally):
+   ```bash
+   git clone https://github.com/breeves11/video.git
+   cd video
+   ```
+
+2. **Create your env file from the template:**
+   ```bash
+   cp .env.example .env
+   ```
+   Open `.env` and fill in whatever you want:
+   - Leave `YOUTUBE_API_KEY` / `ANTHROPIC_API_KEY` blank to run fully offline
+     (deterministic niche estimates + template-based content). Add either to
+     get live YouTube data / Claude-written scripts.
+   - Leave `APP_USERNAME` / `APP_PASSWORD` blank for no login prompt (fine —
+     this is your own machine, not a public URL).
+
+3. **Build and start the container:**
+   ```bash
+   docker compose up --build
+   ```
+   First run builds the image (installs Python deps inside the container);
+   subsequent runs with `docker compose up` reuse the cached image and start
+   in a couple seconds.
+
+4. **Open the dashboard:** http://localhost:8000
+
+5. **Stop it** with `Ctrl+C`, or `docker compose down` to stop it in the
+   background. Your data (tracked videos, cached niches) persists across
+   restarts in a named Docker volume (`app_data`) — `docker compose down -v`
+   wipes it if you want a clean slate.
+
+**Without Compose**, plain Docker works too:
+```bash
+docker build -t youtube-niche-engine .
+docker run -p 8000:8000 --env-file .env -v niche_data:/app/data youtube-niche-engine
+```
+
+**Applying code changes:** the image bakes in a snapshot of the code, so
+after editing files run `docker compose up --build` again to rebuild. There's
+no live-reload in the container (unlike `uvicorn --reload` in the plain
+Python setup above).
+
 ### Testing on your phone
 
 The dev server above only listens on your computer. To open it from a phone:

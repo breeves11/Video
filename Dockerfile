@@ -8,7 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend ./backend
 COPY frontend ./frontend
 
-ENV DATABASE_PATH=/tmp/app.db
+ENV DATABASE_PATH=/app/data/app.db
+VOLUME ["/app/data"]
 EXPOSE 8000
 
 CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
