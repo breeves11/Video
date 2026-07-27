@@ -1,12 +1,10 @@
 import math
 from dataclasses import asdict, dataclass
-from typing import List
+from typing import List, Optional
 
 from . import config
 from .niche_data import NICHE_CATEGORIES
 from .youtube_client import get_niche_stats
-
-ASSUMED_VIDEOS_PER_MONTH = 8
 
 
 @dataclass
@@ -33,11 +31,12 @@ def _normalize(value: float, lo: float, hi: float) -> float:
     return max(0.0, min(1.0, (value - lo) / (hi - lo)))
 
 
-def discover_niches(limit: int = 15, videos_per_month: int = ASSUMED_VIDEOS_PER_MONTH) -> List[NicheOpportunity]:
+def discover_niches(limit: int = 15, videos_per_month: Optional[int] = None) -> List[NicheOpportunity]:
     """Rank candidate niches by an opportunity score blending demand, how
     saturated the space is, trend momentum, and per-view monetization, then
     project the revenue and posting cadence needed to hit the revenue goal.
     """
+    videos_per_month = videos_per_month if videos_per_month is not None else config.ASSUMED_VIDEOS_PER_MONTH
     candidates = []
     for category, meta in NICHE_CATEGORIES.items():
         for keyword in meta["keywords"]:

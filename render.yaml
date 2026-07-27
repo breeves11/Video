@@ -16,3 +16,7 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: APP_USERNAME
+        sync: false
+      - key: APP_PASSWORD
+        sync: false

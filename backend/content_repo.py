@@ -26,6 +26,12 @@ def save_content(package: ContentPackage) -> int:
         return cursor.lastrowid
 
 
+def delete_content(content_id: int) -> bool:
+    with db.session() as conn:
+        cursor = conn.execute("DELETE FROM content WHERE id = ?", (content_id,))
+        return cursor.rowcount > 0
+
+
 def list_content(limit: int = 20) -> list:
     with db.session() as conn:
         rows = conn.execute(

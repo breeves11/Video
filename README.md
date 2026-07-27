@@ -1,5 +1,7 @@
 # YouTube Niche & Content Engine
 
+![Tests](https://github.com/breeves11/video/actions/workflows/tests.yml/badge.svg)
+
 An app that helps you find YouTube niches likely to generate views and
 revenue, generates ready-to-use video content for them, and tracks your
 progress toward a monthly revenue goal (default: $5,000/month).
@@ -25,13 +27,21 @@ progress toward a monthly revenue goal (default: $5,000/month).
    thumbnail text ideas. Uses Claude (`ANTHROPIC_API_KEY`) when available,
    otherwise falls back to a deterministic template generator so the app is
    always usable.
-3. **Revenue tracking** (`backend/revenue.py`) — log published videos (views,
-   estimated or actual revenue) and see monthly progress toward the goal, plus
-   suggestions on which niches to publish more videos in to close the gap.
+3. **Revenue tracking** (`backend/revenue.py`) — log published videos (title,
+   publish date, views, estimated or actual revenue) and see progress for the
+   *current calendar month* toward the goal, plus suggestions on which niches
+   to publish more videos in to close the gap. Entries are currently manual —
+   there's no automatic pull from YouTube Analytics/AdSense (that would need
+   its own OAuth app and a monetization-scoped consent flow per channel,
+   which is out of scope here; revenue numbers are only as accurate as what
+   you enter).
 
 By default the niche data is a deterministic estimator (no external API
 needed). Set `YOUTUBE_API_KEY` to pull real recent-upload stats from the
-YouTube Data API v3 instead.
+YouTube Data API v3 instead. The assumed posting cadence used to project
+monthly revenue defaults to 8 videos/month (`ASSUMED_VIDEOS_PER_MONTH`) and
+can be overridden per-request via `?videos_per_month=` on `GET /api/niches`,
+or live in the dashboard.
 
 **Note on the $5k/month goal:** this app finds opportunities and produces the
 content — actually hitting the revenue number still requires publishing
@@ -78,16 +88,32 @@ persistent disk or external DB for real use.
 **Railway / Fly.io:** both auto-detect the included `Dockerfile` — connect the
 repo (Railway) or run `fly launch` (Fly) and it builds from that.
 
+### Securing a public deploy
+
+Once this is reachable from the internet, anyone with the link can call
+`/api/content/generate` (burns your `ANTHROPIC_API_KEY` usage) or
+`/api/niches/poll` (burns `YOUTUBE_API_KEY` quota — the default free quota is
+10,000 units/day and a single poll uses roughly 130). Before sharing the URL
+around, set **both** `APP_USERNAME` and `APP_PASSWORD` in the environment —
+this turns on HTTP Basic Auth for the whole app (dashboard included). Leaving
+either blank disables auth entirely, which is the default for local dev.
+
+As defense in depth even with auth on, `/api/content/generate` and
+`/api/niches/poll` are also rate-limited per IP (`RATE_LIMIT_PER_MINUTE`,
+default 10/minute).
+
 ## API
 
-- `GET  /api/health` — status + which data/content sources are active
-- `GET  /api/niches?limit=15` — ranked niche opportunities
-- `POST /api/niches/poll` — force a fresh niche poll
-- `POST /api/content/generate` — `{niche_keyword, category, video_topic?}` → titles/description/tags/script/thumbnails
-- `GET  /api/content` — previously generated content
-- `POST /api/videos` — `{title, niche_keyword?, views?, estimated_revenue_usd?, actual_revenue_usd?}`
-- `GET  /api/videos` — tracked videos
-- `GET  /api/progress` — current month revenue vs. goal, plus gap-closing suggestions
+- `GET    /api/health` — status + which data/content sources are active
+- `GET    /api/niches?limit=15&videos_per_month=8` — ranked niche opportunities
+- `POST   /api/niches/poll` — force a fresh niche poll (rate-limited)
+- `POST   /api/content/generate` — `{niche_keyword, category, video_topic?}` → titles/description/tags/script/thumbnails (rate-limited)
+- `GET    /api/content` — previously generated content
+- `DELETE /api/content/{id}` — remove a generated-content entry
+- `POST   /api/videos` — `{title, niche_keyword?, published_at?, views?, estimated_revenue_usd?, actual_revenue_usd?}` (`published_at` defaults to today; numeric fields must be ≥ 0)
+- `GET    /api/videos` — tracked videos
+- `DELETE /api/videos/{id}` — remove a tracked video
+- `GET    /api/progress` — current calendar month's revenue vs. goal, plus gap-closing suggestions
 
 ## Tests
 

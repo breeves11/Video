@@ -6,10 +6,10 @@ from typing import List, Optional
 from . import llm_client
 
 TITLE_TEMPLATES = [
-    "5 {topic} Mistakes Beginners Make in 2026",
+    "5 {topic} Mistakes to Avoid in 2026",
     "I Tried {topic} For 30 Days — Here's What Happened",
     "The Truth About {topic} Nobody Tells You",
-    "{topic}: The Complete Beginner's Guide",
+    "{topic}: The Complete Guide",
     "Why {topic} Is Blowing Up Right Now",
 ]
 

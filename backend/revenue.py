@@ -17,6 +17,8 @@ def add_video(
     estimated_revenue_usd: float = 0.0,
     actual_revenue_usd: Optional[float] = None,
 ) -> int:
+    if not published_at:
+        published_at = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     with db.session() as conn:
         cursor = conn.execute(
             """
@@ -32,6 +34,12 @@ def list_videos() -> list:
     with db.session() as conn:
         rows = conn.execute("SELECT * FROM videos ORDER BY created_at DESC").fetchall()
         return [dict(row) for row in rows]
+
+
+def delete_video(video_id: int) -> bool:
+    with db.session() as conn:
+        cursor = conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
+        return cursor.rowcount > 0
 
 
 def get_progress(goal: Optional[float] = None) -> dict:

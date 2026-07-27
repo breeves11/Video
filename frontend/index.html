@@ -12,6 +12,8 @@
     <p class="subtitle">Find niches likely to earn, generate ready-to-publish content, and track progress toward your monthly revenue goal.</p>
   </header>
 
+  <div id="error-banner" class="error-banner" hidden></div>
+
   <main>
     <section id="progress-section" class="card">
       <h2>Revenue Progress</h2>
@@ -28,6 +30,10 @@
         <button id="poll-btn">Poll Now</button>
       </div>
       <p class="hint" id="data-source-hint"></p>
+      <div class="field inline-field">
+        <label for="videos-per-month">Assumed videos/month</label>
+        <input id="videos-per-month" type="number" min="1" value="8" />
+      </div>
       <div class="table-scroll">
         <table id="niches-table">
           <thead>
@@ -40,6 +46,7 @@
               <th>Trend %</th>
               <th>RPM</th>
               <th>Rev/Video</th>
+              <th>Rev/Month</th>
               <th>Videos to hit goal</th>
               <th></th>
             </tr>
@@ -52,21 +59,61 @@
     <section id="content-section" class="card">
       <h2>Generate Content</h2>
       <form id="content-form">
-        <input id="content-keyword" type="text" placeholder="Niche keyword" required />
-        <input id="content-category" type="text" placeholder="Category (optional)" />
-        <input id="content-topic" type="text" placeholder="Specific video topic (optional)" />
-        <button type="submit">Generate</button>
+        <div class="field">
+          <label for="content-keyword">Niche keyword</label>
+          <input id="content-keyword" type="text" placeholder="Niche keyword" required />
+        </div>
+        <div class="field">
+          <label for="content-category">Category</label>
+          <input id="content-category" type="text" placeholder="Optional" />
+        </div>
+        <div class="field">
+          <label for="content-topic">Specific video topic</label>
+          <input id="content-topic" type="text" placeholder="Optional" />
+        </div>
+        <button type="submit" id="generate-btn">Generate</button>
       </form>
       <div id="content-result"></div>
+
+      <h3 class="subsection-title">Previously Generated</h3>
+      <div class="table-scroll">
+        <table id="content-table">
+          <thead>
+            <tr>
+              <th>Niche</th>
+              <th>Topic</th>
+              <th>Source</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="content-body"></tbody>
+        </table>
+      </div>
     </section>
 
     <section id="videos-section" class="card">
       <h2>Track Published Videos</h2>
       <form id="video-form">
-        <input id="video-title" type="text" placeholder="Video title" required />
-        <input id="video-niche" type="text" placeholder="Niche keyword (optional)" />
-        <input id="video-views" type="number" placeholder="Views" min="0" value="0" />
-        <input id="video-revenue" type="number" step="0.01" placeholder="Estimated revenue $" min="0" value="0" />
+        <div class="field">
+          <label for="video-title">Video title</label>
+          <input id="video-title" type="text" placeholder="Video title" required />
+        </div>
+        <div class="field">
+          <label for="video-niche">Niche keyword</label>
+          <input id="video-niche" type="text" placeholder="Optional" />
+        </div>
+        <div class="field">
+          <label for="video-published">Published date</label>
+          <input id="video-published" type="date" required />
+        </div>
+        <div class="field">
+          <label for="video-views">Views</label>
+          <input id="video-views" type="number" placeholder="Views" min="0" value="0" />
+        </div>
+        <div class="field">
+          <label for="video-revenue">Estimated revenue $</label>
+          <input id="video-revenue" type="number" step="0.01" placeholder="Estimated revenue $" min="0" value="0" />
+        </div>
         <button type="submit">Add Video</button>
       </form>
       <div class="table-scroll">
@@ -75,8 +122,10 @@
             <tr>
               <th>Title</th>
               <th>Niche</th>
+              <th>Published</th>
               <th>Views</th>
               <th>Est. Revenue</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="videos-body"></tbody>
