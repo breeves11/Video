@@ -50,6 +50,34 @@ uvicorn backend.main:app --reload
 
 Open http://127.0.0.1:8000 for the dashboard.
 
+### Testing on your phone
+
+The dev server above only listens on your computer. To open it from a phone:
+
+- **Same Wi-Fi (fastest):** run `uvicorn backend.main:app --host 0.0.0.0 --port 8000`
+  instead, find your computer's LAN IP (e.g. `ipconfig`/`ifconfig`, something
+  like `192.168.x.x`), then visit `http://<that-ip>:8000` in your phone's
+  browser.
+- **Public URL, any network:** deploy it (see below) and open the deployed URL
+  on your phone.
+
+### Deploy (public URL)
+
+**Render (no local tooling needed):**
+1. Push this repo to GitHub (already done if you're reading this from there).
+2. In the Render dashboard: New → Blueprint → connect this repo. Render reads
+   `render.yaml` and provisions a free web service automatically.
+3. Optionally set `YOUTUBE_API_KEY` / `ANTHROPIC_API_KEY` in the service's
+   environment settings for live data / AI-generated content.
+4. Open the `*.onrender.com` URL Render gives you — that works from any phone.
+
+Note: the free tier's filesystem is ephemeral, so the SQLite DB (tracked
+videos, cached niches) resets on redeploy/restart. Fine for testing; swap in a
+persistent disk or external DB for real use.
+
+**Railway / Fly.io:** both auto-detect the included `Dockerfile` — connect the
+repo (Railway) or run `fly launch` (Fly) and it builds from that.
+
 ## API
 
 - `GET  /api/health` — status + which data/content sources are active
