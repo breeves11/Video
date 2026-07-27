@@ -28,23 +28,25 @@
         <button id="poll-btn">Poll Now</button>
       </div>
       <p class="hint" id="data-source-hint"></p>
-      <table id="niches-table">
-        <thead>
-          <tr>
-            <th>Keyword</th>
-            <th>Category</th>
-            <th>Score</th>
-            <th>Avg Views</th>
-            <th>Competition</th>
-            <th>Trend %</th>
-            <th>RPM</th>
-            <th>Rev/Video</th>
-            <th>Videos to hit goal</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="niches-body"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table id="niches-table">
+          <thead>
+            <tr>
+              <th>Keyword</th>
+              <th>Category</th>
+              <th>Score</th>
+              <th>Avg Views</th>
+              <th>Competition</th>
+              <th>Trend %</th>
+              <th>RPM</th>
+              <th>Rev/Video</th>
+              <th>Videos to hit goal</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="niches-body"></tbody>
+        </table>
+      </div>
     </section>
 
     <section id="content-section" class="card">
@@ -67,17 +69,19 @@
         <input id="video-revenue" type="number" step="0.01" placeholder="Estimated revenue $" min="0" value="0" />
         <button type="submit">Add Video</button>
       </form>
-      <table id="videos-table">
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Niche</th>
-            <th>Views</th>
-            <th>Est. Revenue</th>
-          </tr>
-        </thead>
-        <tbody id="videos-body"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table id="videos-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Niche</th>
+              <th>Views</th>
+              <th>Est. Revenue</th>
+            </tr>
+          </thead>
+          <tbody id="videos-body"></tbody>
+        </table>
+      </div>
     </section>
   </main>
 

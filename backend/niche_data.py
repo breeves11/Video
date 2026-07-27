@@ -118,4 +118,23 @@ NICHE_CATEGORIES = {
             "thrifting and upcycling clothes",
         ],
     },
+    # "Made for Kids" content routinely posts some of the highest view counts on
+    # all of YouTube (nursery rhymes, learning songs, toy unboxing), so demand
+    # here is set near the top of the scale. But COPPA requires these channels
+    # to disable personalized ads and comments, which collapses RPM well below
+    # every other category -- real per-video revenue depends on massive volume,
+    # not per-view rate. Competition is also extremely high (a handful of
+    # channels like Cocomelon dominate search).
+    "kids_shorts_content": {
+        "rpm": 2.0,
+        "base_interest": 95,
+        "base_competition": 90,
+        "trend_bias": 3,
+        "keywords": [
+            "nursery rhymes for toddlers shorts",
+            "learn colors and shapes for kids",
+            "kids abc learning songs",
+            "surprise toy unboxing for kids",
+        ],
+    },
 }

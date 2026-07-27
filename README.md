@@ -7,12 +7,19 @@ progress toward a monthly revenue goal (default: $5,000/month).
 ## What it does
 
 1. **Niche discovery** (`backend/niche_finder.py`) — scores candidate niches
-   across 10 content categories (personal finance, AI tools, make-money-online,
-   software tutorials, health, pets, travel, careers, sustainability, etc.) on
-   demand, competition, trend momentum, and monetization (RPM), then projects
-   revenue-per-video and how many videos are needed to hit the revenue goal.
-   A background job (`backend/scheduler.py`) re-polls on an interval
-   (`POLL_INTERVAL_HOURS`, default 6h) so opportunities stay fresh.
+   across 11 content categories (personal finance, AI tools, make-money-online,
+   software tutorials, health, pets, travel, careers, sustainability, kids'
+   short-form content, etc.) on demand, competition, trend momentum, and
+   monetization (RPM), then projects revenue-per-video and how many videos are
+   needed to hit the revenue goal. A background job (`backend/scheduler.py`)
+   re-polls on an interval (`POLL_INTERVAL_HOURS`, default 6h) so opportunities
+   stay fresh.
+
+   Note on kids' content: "Made for Kids" videos get some of the highest view
+   counts on YouTube, but COPPA disables personalized ads and comments on them,
+   which drags RPM well below every other category in `backend/niche_data.py`.
+   The projections reflect that — expect to need much higher video volume to
+   hit the same revenue goal in that niche.
 2. **Content generation** (`backend/content_generator.py`) — for any niche,
    generates titles, a description, tags, a full script outline, and
    thumbnail text ideas. Uses Claude (`ANTHROPIC_API_KEY`) when available,
