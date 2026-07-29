@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Small Business AI Agents</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="error-banner" class="error-banner" style="display:none"></div>
+
+  <header>
+    <h1>Small Business AI Agents</h1>
+    <p class="subtitle">AI front-desk for your emails and phone calls</p>
+  </header>
+
+  <main>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="inbox">Inbox</button>
+      <button class="tab-btn" data-tab="calls">Calls</button>
+      <button class="tab-btn" data-tab="kb">Knowledge Base</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </nav>
+
+    <!-- INBOX -->
+    <section id="tab-inbox" class="tab-panel active">
+      <div class="card">
+        <div class="section-header">
+          <h2>Email inbox</h2>
+          <div style="display:flex; gap:0.5rem;">
+            <select id="email-status-filter">
+              <option value="pending">Pending review</option>
+              <option value="">All</option>
+              <option value="sent">Sent</option>
+              <option value="dismissed">Dismissed</option>
+            </select>
+            <button id="refresh-emails" class="btn-secondary">Refresh</button>
+          </div>
+        </div>
+        <div id="email-list"></div>
+        <p id="email-empty" class="empty-state" style="display:none">No emails here yet.</p>
+      </div>
+
+      <div class="card">
+        <h2>Simulate an inbound email</h2>
+        <p class="hint">
+          No email provider connected yet? Use this to try the agent. In
+          production, point your provider's inbound-parse webhook (or IMAP
+          settings, below) at this app instead.
+        </p>
+        <form id="simulate-email-form">
+          <div class="field">
+            <label for="sim-from">From</label>
+            <input id="sim-from" type="text" placeholder="jane@example.com" required />
+          </div>
+          <div class="field">
+            <label for="sim-subject">Subject</label>
+            <input id="sim-subject" type="text" placeholder="Question about hours" />
+          </div>
+          <div class="field" style="flex-basis:100%">
+            <label for="sim-body">Body</label>
+            <textarea id="sim-body" placeholder="What time do you open on Saturdays?"></textarea>
+          </div>
+          <button type="submit">Send test email</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- CALLS -->
+    <section id="tab-calls" class="tab-panel">
+      <div class="card">
+        <div class="section-header">
+          <h2>Call log</h2>
+          <button id="refresh-calls" class="btn-secondary">Refresh</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>From</th><th>Status</th><th>Category</th><th>Urgency</th><th>Transcript / Summary</th><th>Callback?</th><th></th></tr>
+            </thead>
+            <tbody id="calls-body"></tbody>
+          </table>
+        </div>
+        <p id="calls-empty" class="empty-state" style="display:none">No calls logged yet.</p>
+      </div>
+
+      <div class="card">
+        <h2>Try the phone agent</h2>
+        <p class="hint">
+          Simulates what a caller hears, without needing a real Twilio call.
+          For production, set your Twilio number's voice webhook to
+          <code>/api/phone/voice</code> and the status callback to
+          <code>/api/phone/status</code> (see README).
+        </p>
+        <form id="test-call-form">
+          <div class="field inline-field">
+            <label for="test-caller">Caller number</label>
+            <input id="test-caller" type="text" value="+15550001234" />
+          </div>
+          <button type="submit">Start test call</button>
+        </form>
+        <form id="test-speech-form" style="display:none">
+          <div class="field" style="flex-basis:100%">
+            <label for="test-speech">What the caller says</label>
+            <input id="test-speech" type="text" placeholder="What are your hours?" />
+          </div>
+          <button type="submit">Speak</button>
+        </form>
+        <div id="test-call-output" class="hint" style="margin-top:0.75rem; white-space:pre-wrap;"></div>
+      </div>
+    </section>
+
+    <!-- KNOWLEDGE BASE -->
+    <section id="tab-kb" class="tab-panel">
+      <div class="card">
+        <h2>Business FAQ / knowledge base</h2>
+        <p class="hint">Both agents ground their answers in these entries -- add the questions you get asked most.</p>
+        <form id="kb-form">
+          <div class="field">
+            <label for="kb-question">Question</label>
+            <input id="kb-question" type="text" placeholder="What are your hours?" required />
+          </div>
+          <div class="field">
+            <label for="kb-category">Category</label>
+            <input id="kb-category" type="text" placeholder="general" />
+          </div>
+          <div class="field" style="flex-basis:100%">
+            <label for="kb-answer">Answer</label>
+            <textarea id="kb-answer" placeholder="We're open Mon-Fri 9am-5pm." required></textarea>
+          </div>
+          <button type="submit">Add entry</button>
+        </form>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Question</th><th>Answer</th><th>Category</th><th></th></tr></thead>
+            <tbody id="kb-body"></tbody>
+          </table>
+        </div>
+        <p id="kb-empty" class="empty-state" style="display:none">No FAQ entries yet -- add your first one above.</p>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="tab-panel">
+      <div class="card">
+        <h2>Business info</h2>
+        <form id="settings-form">
+          <div class="field">
+            <label for="set-name">Business name</label>
+            <input id="set-name" type="text" />
+          </div>
+          <div class="field">
+            <label for="set-hours">Business hours</label>
+            <input id="set-hours" type="text" />
+          </div>
+          <div class="field" style="flex-basis:100%">
+            <label for="set-greeting">Email greeting</label>
+            <input id="set-greeting" type="text" />
+          </div>
+          <div class="field" style="flex-basis:100%">
+            <label for="set-voice-greeting">Phone greeting (spoken)</label>
+            <input id="set-voice-greeting" type="text" />
+          </div>
+          <button type="submit">Save</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Auto-send by category</h2>
+        <p class="hint">When on, the AI's draft is sent immediately with no human review. When off, it's queued in the Inbox for approval.</p>
+        <div id="auto-send-toggles"></div>
+      </div>
+
+      <div class="card">
+        <h2>Integration status</h2>
+        <div id="integration-status" class="hint"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

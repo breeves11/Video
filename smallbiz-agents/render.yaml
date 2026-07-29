@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: smallbiz-ai-agents
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_PATH
+        value: /tmp/app.db
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "20"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_USERNAME
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_ADDRESS
+        sync: false
+      - key: IMAP_HOST
+        sync: false
+      - key: IMAP_USERNAME
+        sync: false
+      - key: IMAP_PASSWORD
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false

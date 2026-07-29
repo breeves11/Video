@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    volumes:
+      - smallbiz_data:/app/data
+
+volumes:
+  smallbiz_data:
