@@ -29,6 +29,12 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
 SMTP_FROM_ADDRESS = os.getenv("SMTP_FROM_ADDRESS", SMTP_USERNAME).strip()
 SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").strip().lower() != "false"
 
+# Shared secret required on the inbound-email webhook (POST /api/emails/inbound)
+# once set. Configure your email provider's inbound-parse webhook to send it
+# as an `X-Inbound-Secret` header. Left blank, the endpoint accepts any
+# caller -- fine for local testing, a real security gap on a public deploy.
+INBOUND_EMAIL_SECRET = os.getenv("INBOUND_EMAIL_SECRET", "").strip()
+
 # --- Inbound email (IMAP polling), optional --------------------------------
 # Leave blank to rely solely on the inbound-parse webhook
 # (POST /api/emails/inbound) instead of polling a mailbox.

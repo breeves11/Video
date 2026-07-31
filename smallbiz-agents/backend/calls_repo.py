@@ -45,6 +45,12 @@ def get_call(call_sid: str) -> Optional[dict]:
         return dict(row) if row else None
 
 
+def get_call_by_id(call_id: int) -> Optional[dict]:
+    with db.session() as conn:
+        row = conn.execute("SELECT * FROM calls WHERE id = ?", (call_id,)).fetchone()
+        return dict(row) if row else None
+
+
 def list_calls(handled: Optional[bool] = None, limit: int = 50) -> list:
     with db.session() as conn:
         if handled is None:

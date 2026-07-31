@@ -14,16 +14,6 @@ CREATE TABLE IF NOT EXISTS kb_entries (
     updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS contacts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    email TEXT,
-    phone TEXT,
-    notes TEXT,
-    created_at TEXT NOT NULL,
-    UNIQUE(email, phone)
-);
-
 CREATE TABLE IF NOT EXISTS emails (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     contact_email TEXT NOT NULL,

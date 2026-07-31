@@ -25,6 +25,15 @@ def get_email(email_id: int) -> Optional[dict]:
         return dict(row) if row else None
 
 
+def get_by_thread_id(thread_id: str) -> Optional[dict]:
+    with db.session() as conn:
+        row = conn.execute(
+            "SELECT * FROM emails WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1",
+            (thread_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
 def list_emails(status: Optional[str] = None, limit: int = 50) -> list:
     with db.session() as conn:
         if status:

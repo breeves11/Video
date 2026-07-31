@@ -51,3 +51,49 @@ def test_draft_uses_knowledge_base_when_available():
     draft = email_agent.draft_reply("Shipping", "Do you ship internationally?", "faq")
     assert "worldwide shipping" in draft.text.lower()
     assert draft.source == "template"
+
+
+def test_send_email_distinguishes_failed_from_unconfigured(monkeypatch):
+    from backend import config
+
+    assert email_agent.send_email("someone@example.com", "Subject", "Body") == "unconfigured"
+
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(config, "SMTP_USERNAME", "user")
+    monkeypatch.setattr(config, "SMTP_PASSWORD", "pass")
+
+    class ExplodingSMTP:
+        def __init__(self, *args, **kwargs):
+            raise OSError("connection refused")
+
+    monkeypatch.setattr(email_agent.smtplib, "SMTP", ExplodingSMTP)
+    assert email_agent.send_email("someone@example.com", "Subject", "Body") == "failed"
+
+
+def test_approve_and_send_maps_failed_status(monkeypatch):
+    from backend import config
+
+    row = email_agent.process_inbound_email("someone@example.com", "Hi", "How much does it cost?")
+
+    monkeypatch.setattr(config, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(config, "SMTP_USERNAME", "user")
+    monkeypatch.setattr(config, "SMTP_PASSWORD", "pass")
+
+    class ExplodingSMTP:
+        def __init__(self, *args, **kwargs):
+            raise OSError("connection refused")
+
+    monkeypatch.setattr(email_agent.smtplib, "SMTP", ExplodingSMTP)
+    updated = email_agent.approve_and_send(row["id"])
+    assert updated["status"] == "send_failed"
+
+
+def test_process_inbound_email_dedups_by_thread_id():
+    first = email_agent.process_inbound_email(
+        "dup@example.com", "Hi", "hello", thread_id="msg-abc"
+    )
+    second = email_agent.process_inbound_email(
+        "dup@example.com", "Hi again", "different body", thread_id="msg-abc"
+    )
+    assert first["id"] == second["id"]
+    assert len(emails_repo.list_emails(limit=50)) == 1

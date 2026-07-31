@@ -21,9 +21,14 @@ def isolated_security(monkeypatch):
 @pytest.fixture(autouse=True)
 def no_external_services(monkeypatch):
     """Keep tests hermetic: no LLM key, no SMTP/IMAP/Twilio configured, so
-    every agent exercises its deterministic fallback path."""
+    every agent exercises its deterministic fallback path, and the
+    signature/secret checks on the webhook routes stay off by default
+    (individual tests opt back in by monkeypatching the specific value)."""
     monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "")
     monkeypatch.setattr(config, "SMTP_HOST", "")
     monkeypatch.setattr(config, "IMAP_HOST", "")
     monkeypatch.setattr(config, "TWILIO_ACCOUNT_SID", "")
+    monkeypatch.setattr(config, "TWILIO_AUTH_TOKEN", "")
+    monkeypatch.setattr(config, "PUBLIC_BASE_URL", "")
+    monkeypatch.setattr(config, "INBOUND_EMAIL_SECRET", "")
     yield

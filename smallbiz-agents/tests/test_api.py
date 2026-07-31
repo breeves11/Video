@@ -7,7 +7,25 @@ def test_health():
     with TestClient(app) as client:
         resp = client.get("/api/health")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "ok"
+        body = resp.json()
+        assert body["status"] == "ok"
+        assert body["auth_misconfigured"] is False
+        assert body["imap_last_poll"] is None
+
+
+def test_health_flags_partial_auth_config():
+    from backend import config
+
+    original_user, original_pass = config.APP_USERNAME, config.APP_PASSWORD
+    config.APP_USERNAME = "owner"
+    config.APP_PASSWORD = ""
+    try:
+        with TestClient(app) as client:
+            body = client.get("/api/health").json()
+            assert body["auth_misconfigured"] is True
+            assert body["auth_enabled"] is False
+    finally:
+        config.APP_USERNAME, config.APP_PASSWORD = original_user, original_pass
 
 
 def test_kb_crud_flow():
@@ -45,6 +63,78 @@ def test_inbound_email_flow_and_send():
         send = client.post(f"/api/emails/{email_id}/send", json={})
         assert send.status_code == 200
         assert send.json()["status"] in ("sent", "queued_send_unconfigured")
+
+
+def test_inbound_email_requires_secret_once_configured():
+    from backend import config
+
+    with TestClient(app) as client:
+        original = config.INBOUND_EMAIL_SECRET
+        config.INBOUND_EMAIL_SECRET = "topsecret"
+        try:
+            no_header = client.post(
+                "/api/emails/inbound",
+                json={"from_address": "attacker@example.com", "subject": "hi", "body": "hi"},
+            )
+            assert no_header.status_code == 403
+
+            wrong_header = client.post(
+                "/api/emails/inbound",
+                json={"from_address": "attacker@example.com", "subject": "hi", "body": "hi"},
+                headers={"X-Inbound-Secret": "wrong"},
+            )
+            assert wrong_header.status_code == 403
+
+            right_header = client.post(
+                "/api/emails/inbound",
+                json={"from_address": "real@example.com", "subject": "hi", "body": "hi"},
+                headers={"X-Inbound-Secret": "topsecret"},
+            )
+            assert right_header.status_code == 200
+        finally:
+            config.INBOUND_EMAIL_SECRET = original
+
+
+def test_email_simulate_endpoint_ignores_inbound_secret():
+    from backend import config
+
+    with TestClient(app) as client:
+        original = config.INBOUND_EMAIL_SECRET
+        config.INBOUND_EMAIL_SECRET = "topsecret"
+        try:
+            resp = client.post(
+                "/api/emails/simulate",
+                json={"from_address": "owner-testing@example.com", "subject": "hi", "body": "hi"},
+            )
+            assert resp.status_code == 200
+        finally:
+            config.INBOUND_EMAIL_SECRET = original
+
+
+def test_inbound_email_dedup_by_thread_id():
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/emails/inbound",
+            json={
+                "from_address": "dup@example.com",
+                "subject": "Hi",
+                "body": "hello",
+                "thread_id": "msg-123",
+            },
+        )
+        second = client.post(
+            "/api/emails/inbound",
+            json={
+                "from_address": "dup@example.com",
+                "subject": "Hi again",
+                "body": "hello again",
+                "thread_id": "msg-123",
+            },
+        )
+        assert first.json()["id"] == second.json()["id"]
+
+        emails = client.get("/api/emails").json()["emails"]
+        assert sum(1 for e in emails if e["thread_id"] == "msg-123") == 1
 
 
 def test_dismiss_and_delete_email_endpoints():
@@ -109,3 +199,58 @@ def test_missing_email_returns_404():
     with TestClient(app) as client:
         assert client.get("/api/emails/9999").status_code == 404
         assert client.post("/api/emails/9999/send", json={}).status_code == 404
+
+
+def test_call_recording_proxy(monkeypatch):
+    from backend import calls_repo, config
+
+    with TestClient(app) as client:
+        client.post("/api/phone/voice", data={"CallSid": "CAREC1", "From": "+15551112222"})
+        client.post(
+            "/api/phone/recording",
+            data={"CallSid": "CAREC1", "RecordingUrl": "https://api.twilio.com/rec1"},
+        )
+        call = calls_repo.get_call("CAREC1")
+
+        # No recording yet on a call that never got one.
+        client.post("/api/phone/voice", data={"CallSid": "CAREC2", "From": "+15551112223"})
+        call_no_recording = calls_repo.get_call("CAREC2")
+        assert client.get(f"/api/calls/{call_no_recording['id']}/recording").status_code == 404
+
+        # Recording exists but Twilio isn't configured -- nothing to fetch with.
+        assert client.get(f"/api/calls/{call['id']}/recording").status_code == 400
+
+        monkeypatch.setattr(config, "TWILIO_ACCOUNT_SID", "ACxxx")
+        monkeypatch.setattr(config, "TWILIO_AUTH_TOKEN", "tok")
+        monkeypatch.setattr(config, "TWILIO_FROM_NUMBER", "+15550000000")
+
+        class FakeResponse:
+            status_code = 200
+            content = b"fake-audio-bytes"
+
+        import backend.main as main_module
+
+        monkeypatch.setattr(main_module.requests, "get", lambda *a, **k: FakeResponse())
+
+        resp = client.get(f"/api/calls/{call['id']}/recording")
+        assert resp.status_code == 200
+        assert resp.content == b"fake-audio-bytes"
+        assert resp.headers["content-type"] == "audio/mpeg"
+
+
+def test_contacts_endpoint_aggregates_across_channels():
+    with TestClient(app) as client:
+        client.post(
+            "/api/emails/inbound",
+            json={"from_address": "Jane <jane@example.com>", "subject": "Hi", "body": "Question"},
+        )
+        client.post("/api/phone/voice", data={"CallSid": "CACONTACT1", "From": "+15557778888"})
+
+        contacts = client.get("/api/contacts").json()["contacts"]
+        identities = {c["identity"] for c in contacts}
+        assert "jane@example.com" in identities
+        assert "+15557778888" in identities
+
+        jane = next(c for c in contacts if c["identity"] == "jane@example.com")
+        assert jane["channels"] == ["email"]
+        assert jane["interactions"] == 1

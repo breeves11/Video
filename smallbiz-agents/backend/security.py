@@ -19,10 +19,23 @@ from starlette.responses import Response
 from . import config
 
 # Webhook endpoints (Twilio, inbound-email parse providers) can't send Basic
-# Auth credentials, so they're exempted from the auth middleware. They stay
-# safe to expose because they only ever create records / return TwiML --
-# nothing in them reads or exposes existing data.
-_AUTH_EXEMPT_PREFIXES = ("/api/phone/", "/api/emails/inbound")
+# Auth credentials, so they're exempted from the auth middleware. Each is
+# independently authenticated another way instead: the /api/phone/* routes
+# here are exactly the ones protected by Twilio's own request signature
+# (see twilio_validate.py), and /api/emails/inbound is protected by
+# INBOUND_EMAIL_SECRET. Listed as an exact set (not a prefix) so that any
+# *other* route added under /api/phone/ or /api/emails/ in the future --
+# e.g. the dashboard's own /api/phone/simulate/* test-call endpoints --
+# stays behind Basic Auth by default rather than silently inheriting the
+# exemption.
+_AUTH_EXEMPT_PATHS = {
+    "/api/phone/voice",
+    "/api/phone/gather",
+    "/api/phone/recording",
+    "/api/phone/transcription",
+    "/api/phone/status",
+    "/api/emails/inbound",
+}
 
 
 class BasicAuthMiddleware(BaseHTTPMiddleware):
@@ -30,7 +43,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         if not config.APP_USERNAME or not config.APP_PASSWORD:
             return await call_next(request)
 
-        if request.url.path.startswith(_AUTH_EXEMPT_PREFIXES):
+        if request.url.path in _AUTH_EXEMPT_PATHS:
             return await call_next(request)
 
         header = request.headers.get("authorization", "")
@@ -64,3 +77,17 @@ def rate_limit(request: Request) -> None:
     if len(bucket) >= config.RATE_LIMIT_PER_MINUTE:
         raise HTTPException(status_code=429, detail="Rate limit exceeded, try again in a minute")
     bucket.append(now)
+
+
+def verify_inbound_email_secret(request: Request) -> None:
+    """Guards POST /api/emails/inbound, the one endpoint that's both
+    unauthenticated (a provider webhook can't send Basic Auth) and capable
+    of triggering an outbound send -- without this, anyone who finds the
+    URL could get the app to auto-send mail to an arbitrary address using
+    the business's SMTP account.
+    """
+    if not config.INBOUND_EMAIL_SECRET:
+        return
+    provided = request.headers.get("x-inbound-secret", "")
+    if not secrets.compare_digest(provided, config.INBOUND_EMAIL_SECRET):
+        raise HTTPException(status_code=403, detail="Invalid or missing inbound secret")

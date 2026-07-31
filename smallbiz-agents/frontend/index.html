@@ -76,7 +76,7 @@
         <div class="table-scroll">
           <table>
             <thead>
-              <tr><th>From</th><th>Status</th><th>Category</th><th>Urgency</th><th>Transcript / Summary</th><th>Callback?</th><th></th></tr>
+              <tr><th>From</th><th>Status</th><th>Category</th><th>Urgency</th><th>Transcript / Summary</th><th>Recording</th><th>Callback?</th><th></th></tr>
             </thead>
             <tbody id="calls-body"></tbody>
           </table>
@@ -128,7 +128,8 @@
             <label for="kb-answer">Answer</label>
             <textarea id="kb-answer" placeholder="We're open Mon-Fri 9am-5pm." required></textarea>
           </div>
-          <button type="submit">Add entry</button>
+          <button type="submit" id="kb-form-submit">Add entry</button>
+          <button type="button" id="kb-form-cancel" class="btn-secondary" style="display:none">Cancel</button>
         </form>
         <div class="table-scroll">
           <table>

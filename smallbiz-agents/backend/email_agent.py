@@ -3,6 +3,7 @@ and either queues it for human approval or sends it automatically depending
 on the business's per-category auto-send settings.
 """
 
+import logging
 import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -10,6 +11,8 @@ from email.utils import parseaddr
 from typing import Optional
 
 from . import classifier, config, emails_repo, knowledge_base, settings_repo
+
+logger = logging.getLogger(__name__)
 
 _CATEGORY_LABELS = {
     "faq": "a general question",
@@ -103,10 +106,14 @@ def draft_reply(subject: str, body: str, category: str) -> Draft:
     return Draft(text=_draft_with_template(subject, body, category, kb_entries), source="template")
 
 
-def send_email(to_address: str, subject: str, body: str) -> bool:
-    """Send via SMTP if configured. Returns True on (attempted) success."""
+def send_email(to_address: str, subject: str, body: str) -> str:
+    """Send via SMTP if configured. Returns "sent", "unconfigured" (no SMTP
+    credentials set), or "failed" (SMTP is configured but the send raised --
+    kept distinct from "unconfigured" so a broken mail server doesn't look
+    identical to a business that simply hasn't set up SMTP yet).
+    """
     if not config.smtp_configured():
-        return False
+        return "unconfigured"
     try:
         message = EmailMessage()
         message["From"] = config.SMTP_FROM_ADDRESS or config.SMTP_USERNAME
@@ -119,16 +126,27 @@ def send_email(to_address: str, subject: str, body: str) -> bool:
                 server.starttls()
             server.login(config.SMTP_USERNAME, config.SMTP_PASSWORD)
             server.send_message(message)
-        return True
+        return "sent"
     except Exception:
-        return False
+        logger.exception("Failed to send email to %s", to_address)
+        return "failed"
 
 
 def process_inbound_email(from_address: str, subject: str, body: str,
                            thread_id: Optional[str] = None) -> dict:
     """Classify + draft a reply for a new inbound email, auto-sending it if
     the category is configured for auto-send. Returns the saved email row.
+
+    If `thread_id` matches an email already on file (e.g. the same
+    Message-ID re-delivered by a provider retry, or picked up twice by an
+    IMAP poll), the existing row is returned unchanged instead of creating
+    a duplicate -- otherwise an auto-send category could reply twice.
     """
+    if thread_id:
+        existing = emails_repo.get_by_thread_id(thread_id)
+        if existing:
+            return existing
+
     contact_name, contact_email = parseaddr(from_address)
     contact_email = contact_email or from_address
 
@@ -155,6 +173,13 @@ def process_inbound_email(from_address: str, subject: str, body: str,
     return emails_repo.get_email(email_id)
 
 
+_SEND_RESULT_TO_STATUS = {
+    "sent": "sent",
+    "unconfigured": "queued_send_unconfigured",
+    "failed": "send_failed",
+}
+
+
 def approve_and_send(email_id: int, override_text: Optional[str] = None) -> dict:
     row = emails_repo.get_email(email_id)
     if row is None:
@@ -163,7 +188,7 @@ def approve_and_send(email_id: int, override_text: Optional[str] = None) -> dict
     reply_text = override_text if override_text is not None else row["ai_draft"]
     reply_subject = f"Re: {row['subject']}" if row["subject"] else "Re: your message"
 
-    sent = send_email(row["contact_email"], reply_subject, reply_text or "")
-    new_status = "sent" if sent else "queued_send_unconfigured"
-    emails_repo.update_status(email_id, new_status, ai_draft=reply_text, mark_sent=sent)
+    result = send_email(row["contact_email"], reply_subject, reply_text or "")
+    new_status = _SEND_RESULT_TO_STATUS[result]
+    emails_repo.update_status(email_id, new_status, ai_draft=reply_text, mark_sent=(result == "sent"))
     return emails_repo.get_email(email_id)

@@ -64,7 +64,7 @@ function renderEmails(emails) {
   for (const email of emails) {
     const item = document.createElement("div");
     item.className = "inbox-item";
-    const canAct = email.status === "pending" || email.status === "queued_send_unconfigured";
+    const canAct = ["pending", "queued_send_unconfigured", "send_failed"].includes(email.status);
     item.innerHTML = `
       <div class="inbox-item-head">
         <strong>${escapeHtml(email.subject || "(no subject)")}</strong>
@@ -119,7 +119,7 @@ document.getElementById("simulate-email-form").addEventListener("submit", async 
   const subject = document.getElementById("sim-subject").value;
   const body = document.getElementById("sim-body").value;
   try {
-    await api("/emails/inbound", {
+    await api("/emails/simulate", {
       method: "POST",
       body: JSON.stringify({ from_address, subject, body }),
     });
@@ -151,12 +151,16 @@ function renderCalls(calls) {
   for (const call of calls) {
     const row = document.createElement("tr");
     const summary = call.ai_summary || call.transcript || "";
+    const recording = call.recording_url
+      ? `<audio controls preload="none" style="max-width:200px;"><source src="${API}/calls/${call.id}/recording" type="audio/mpeg"></audio>`
+      : "";
     row.innerHTML = `
       <td>${escapeHtml(call.from_number)}</td>
       <td>${escapeHtml(call.status)}</td>
       <td>${badge(call.category)}</td>
       <td>${badge(call.urgency)}</td>
       <td style="white-space:normal; max-width:280px;">${escapeHtml(summary)}</td>
+      <td>${recording}</td>
       <td>${call.callback_requested ? "Yes" : "No"}</td>
       <td>${call.handled ? "" : `<button class="btn-delete handled-btn" data-id="${call.id}">Mark handled</button>`}</td>
     `;
@@ -189,7 +193,7 @@ document.getElementById("test-call-form").addEventListener("submit", async (e) =
   const form = new FormData();
   form.append("CallSid", testCallSid);
   form.append("From", from);
-  const response = await fetch(`${API}/phone/voice`, { method: "POST", body: form });
+  const response = await fetch(`${API}/phone/simulate/voice`, { method: "POST", body: form });
   const xml = await response.text();
   document.getElementById("test-call-output").textContent = `AI: ${extractSpokenText(xml)}`;
   document.getElementById("test-speech-form").style.display = "flex";
@@ -202,7 +206,7 @@ document.getElementById("test-speech-form").addEventListener("submit", async (e)
   const form = new FormData();
   form.append("CallSid", testCallSid);
   form.append("SpeechResult", speech);
-  const response = await fetch(`${API}/phone/gather`, { method: "POST", body: form });
+  const response = await fetch(`${API}/phone/simulate/gather`, { method: "POST", body: form });
   const xml = await response.text();
   const output = document.getElementById("test-call-output");
   output.textContent += `\nCaller: ${speech}\nAI: ${extractSpokenText(xml)}`;
@@ -221,6 +225,8 @@ async function loadKb() {
   }
 }
 
+let editingKbId = null;
+
 function renderKb(entries) {
   const body = document.getElementById("kb-body");
   const empty = document.getElementById("kb-empty");
@@ -233,17 +239,41 @@ function renderKb(entries) {
       <td>${escapeHtml(entry.question)}</td>
       <td style="white-space:normal; max-width:320px;">${escapeHtml(entry.answer)}</td>
       <td>${escapeHtml(entry.category)}</td>
-      <td><button class="btn-delete kb-delete-btn" data-id="${entry.id}">Delete</button></td>
+      <td style="white-space:nowrap;">
+        <button class="btn-secondary kb-edit-btn" data-id="${entry.id}">Edit</button>
+        <button class="btn-delete kb-delete-btn" data-id="${entry.id}">Delete</button>
+      </td>
     `;
     body.appendChild(row);
   }
 
+  body.querySelectorAll(".kb-edit-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const entry = entries.find((e) => String(e.id) === btn.dataset.id);
+      if (!entry) return;
+      editingKbId = entry.id;
+      document.getElementById("kb-question").value = entry.question;
+      document.getElementById("kb-answer").value = entry.answer;
+      document.getElementById("kb-category").value = entry.category;
+      document.getElementById("kb-form-submit").textContent = "Save changes";
+      document.getElementById("kb-form-cancel").style.display = "inline-block";
+      document.getElementById("kb-question").focus();
+    });
+  });
   body.querySelectorAll(".kb-delete-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await api(`/kb/${btn.dataset.id}`, { method: "DELETE" });
+      if (editingKbId === Number(btn.dataset.id)) resetKbForm();
       loadKb();
     });
   });
+}
+
+function resetKbForm() {
+  editingKbId = null;
+  document.getElementById("kb-form").reset();
+  document.getElementById("kb-form-submit").textContent = "Add entry";
+  document.getElementById("kb-form-cancel").style.display = "none";
 }
 
 document.getElementById("kb-form").addEventListener("submit", async (e) => {
@@ -252,13 +282,19 @@ document.getElementById("kb-form").addEventListener("submit", async (e) => {
   const answer = document.getElementById("kb-answer").value;
   const category = document.getElementById("kb-category").value || "general";
   try {
-    await api("/kb", { method: "POST", body: JSON.stringify({ question, answer, category }) });
-    document.getElementById("kb-form").reset();
+    if (editingKbId) {
+      await api(`/kb/${editingKbId}`, { method: "PUT", body: JSON.stringify({ question, answer, category }) });
+    } else {
+      await api("/kb", { method: "POST", body: JSON.stringify({ question, answer, category }) });
+    }
+    resetKbForm();
     loadKb();
   } catch (err) {
-    showError(`Failed to add entry: ${err.message}`);
+    showError(`Failed to save entry: ${err.message}`);
   }
 });
+
+document.getElementById("kb-form-cancel").addEventListener("click", resetKbForm);
 
 // --- Settings --------------------------------------------------------------
 
@@ -325,12 +361,29 @@ async function loadIntegrationStatus() {
     const health = await api("/health");
     const container = document.getElementById("integration-status");
     const line = (label, ok) => `<div>${ok ? "✅" : "⬜"} ${label}</div>`;
-    container.innerHTML =
+    const warn = (label) => `<div style="color:var(--danger); font-weight:600;">⚠️ ${label}</div>`;
+
+    let html =
       line("AI drafting (ANTHROPIC_API_KEY)", health.ai_agent_enabled) +
       line("Outbound email (SMTP)", health.smtp_configured) +
       line("Inbound email polling (IMAP)", health.imap_configured) +
+      line("Inbound email webhook secret (INBOUND_EMAIL_SECRET)", health.inbound_email_secret_configured) +
       line("Phone / SMS (Twilio)", health.twilio_configured) +
       line("Dashboard auth", health.auth_enabled);
+
+    if (health.auth_misconfigured) {
+      html += warn("Only one of APP_USERNAME/APP_PASSWORD is set -- auth is OFF until both are set.");
+    }
+
+    if (health.imap_last_poll && health.imap_last_poll.at) {
+      const poll = health.imap_last_poll;
+      const when = new Date(poll.at).toLocaleString();
+      html += poll.success
+        ? `<div>✅ Last mailbox poll: ${escapeHtml(when)} (${poll.processed} processed)</div>`
+        : warn(`Last mailbox poll failed at ${escapeHtml(when)}: ${escapeHtml(poll.error || "unknown error")}`);
+    }
+
+    container.innerHTML = html;
   } catch (err) {
     showError(`Failed to load integration status: ${err.message}`);
   }
