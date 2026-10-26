@@ -1,12 +1,21 @@
 services:
   app:
     build: .
+    # Come back up after a crash, a Docker restart, or the host rebooting
+    # (with Docker set to start on boot) -- this is the business's front
+    # desk, so it shouldn't stay down until someone notices.
+    restart: unless-stopped
     ports:
       - "8001:8000"
     env_file:
       - .env
     volumes:
       - smallbiz_data:/app/data
+      # Backups land on the host (./backups) rather than in the data
+      # volume, so they survive `docker compose down -v` and can be synced
+      # off the machine:
+      #   docker compose exec app python scripts/backup_db.py --dest /app/backups
+      - ./backups:/app/backups
 
 volumes:
   smallbiz_data:

@@ -1,12 +1,12 @@
 import logging
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Annotated, Optional
 
 import requests
 from fastapi import Depends, FastAPI, Form, HTTPException
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StringConstraints
 
 from . import (
     calls_repo,
@@ -46,36 +46,44 @@ app.add_middleware(BasicAuthMiddleware)
 
 
 # --- Schemas -----------------------------------------------------------
+# Hard caps here reject only clearly abusive payloads (422). They're set
+# well above anything a real email or FAQ needs; genuine-but-long content
+# is trimmed further down instead (see limits.py).
+
+Filename = Annotated[str, StringConstraints(max_length=1000)]
+
 
 class InboundEmailRequest(BaseModel):
-    from_address: str
-    subject: str = ""
-    body: str = ""
-    thread_id: Optional[str] = None
+    from_address: str = Field(max_length=320)
+    subject: str = Field(default="", max_length=5_000)
+    body: str = Field(default="", max_length=500_000)
+    thread_id: Optional[str] = Field(default=None, max_length=1_000)
+    attachments: list[Filename] = Field(default_factory=list, max_length=200)
 
 
 class EmailEditRequest(BaseModel):
-    text: Optional[str] = None
+    text: Optional[str] = Field(default=None, max_length=50_000)
 
 
 class KBEntryRequest(BaseModel):
-    question: str
-    answer: str
-    category: str = "general"
+    question: str = Field(max_length=1_000)
+    answer: str = Field(max_length=10_000)
+    category: str = Field(default="general", max_length=100)
 
 
 class KBEntryUpdateRequest(BaseModel):
-    question: Optional[str] = None
-    answer: Optional[str] = None
-    category: Optional[str] = None
+    question: Optional[str] = Field(default=None, max_length=1_000)
+    answer: Optional[str] = Field(default=None, max_length=10_000)
+    category: Optional[str] = Field(default=None, max_length=100)
 
 
 class SettingsUpdateRequest(BaseModel):
-    business_name: Optional[str] = None
-    business_hours: Optional[str] = None
-    greeting_message: Optional[str] = None
-    voice_greeting: Optional[str] = None
-    auto_send: Optional[dict] = None
+    business_name: Optional[str] = Field(default=None, max_length=200)
+    business_hours: Optional[str] = Field(default=None, max_length=500)
+    greeting_message: Optional[str] = Field(default=None, max_length=1_000)
+    voice_greeting: Optional[str] = Field(default=None, max_length=1_000)
+    auto_send: Optional[dict[str, bool]] = None
+    ai_disclosure: Optional[bool] = None
 
 
 # --- Health / settings ---------------------------------------------------
@@ -144,7 +152,9 @@ def list_contacts(limit: int = 100):
 
 @app.post("/api/emails/inbound", dependencies=[Depends(rate_limit), Depends(verify_inbound_email_secret)])
 def inbound_email(req: InboundEmailRequest):
-    return email_agent.process_inbound_email(req.from_address, req.subject, req.body, req.thread_id)
+    return email_agent.process_inbound_email(
+        req.from_address, req.subject, req.body, req.thread_id, req.attachments
+    )
 
 
 @app.post("/api/emails/simulate", dependencies=[Depends(rate_limit)])
@@ -154,7 +164,9 @@ def simulate_inbound_email(req: InboundEmailRequest):
     INBOUND_EMAIL_SECRET without breaking the in-dashboard demo, and so this
     path stays behind Basic Auth like the rest of the dashboard.
     """
-    return email_agent.process_inbound_email(req.from_address, req.subject, req.body, req.thread_id)
+    return email_agent.process_inbound_email(
+        req.from_address, req.subject, req.body, req.thread_id, req.attachments
+    )
 
 
 @app.get("/api/emails")

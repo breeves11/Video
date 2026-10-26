@@ -39,6 +39,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
+    if (btn.dataset.tab === "contacts") loadContacts();
   });
 });
 
@@ -72,6 +73,10 @@ function renderEmails(emails) {
       </div>
       <div class="meta">From ${escapeHtml(email.contact_name || email.contact_email)} &lt;${escapeHtml(email.contact_email)}&gt; -- ${escapeHtml(email.status)} -- drafted by ${escapeHtml(email.ai_source)}</div>
       <div class="body-text">${escapeHtml(email.body)}</div>
+      ${(email.attachments || []).length ? `
+        <div class="attachments">📎 ${email.attachments.length} attachment${email.attachments.length === 1 ? "" : "s"}: ${email.attachments.map(escapeHtml).join(", ")}
+          <span class="hint">-- the AI can't see these; open them in your mailbox before replying. Never auto-sent.</span>
+        </div>` : ""}
       <div class="draft-box">
         <textarea data-id="${email.id}" class="draft-text" ${canAct ? "" : "disabled"}>${escapeHtml(email.ai_draft || "")}</textarea>
       </div>
@@ -214,6 +219,42 @@ document.getElementById("test-speech-form").addEventListener("submit", async (e)
   loadCalls();
 });
 
+// --- Contacts --------------------------------------------------------------
+
+async function loadContacts() {
+  try {
+    const { contacts } = await api("/contacts");
+    renderContacts(contacts);
+  } catch (err) {
+    showError(`Failed to load contacts: ${err.message}`);
+  }
+}
+
+function renderContacts(contacts) {
+  const body = document.getElementById("contacts-body");
+  const empty = document.getElementById("contacts-empty");
+  body.innerHTML = "";
+  empty.style.display = contacts.length ? "none" : "block";
+
+  for (const contact of contacts) {
+    const row = document.createElement("tr");
+    const who = contact.name
+      ? `${escapeHtml(contact.name)} <span class="hint">${escapeHtml(contact.identity)}</span>`
+      : escapeHtml(contact.identity);
+    const last = contact.last_contact_at ? new Date(contact.last_contact_at).toLocaleString() : "";
+    row.innerHTML = `
+      <td>${who}</td>
+      <td>${contact.channels.map((c) => `<span class="badge badge-other">${escapeHtml(c)}</span>`).join(" ")}</td>
+      <td>${contact.interactions}</td>
+      <td>${contact.open_items ? `<span class="badge badge-medium">${contact.open_items} open</span>` : "--"}</td>
+      <td>${escapeHtml(last)}</td>
+    `;
+    body.appendChild(row);
+  }
+}
+
+document.getElementById("refresh-contacts").addEventListener("click", loadContacts);
+
 // --- Knowledge base --------------------------------------------------------
 
 async function loadKb() {
@@ -305,6 +346,7 @@ async function loadSettings() {
     document.getElementById("set-hours").value = settings.business_hours || "";
     document.getElementById("set-greeting").value = settings.greeting_message || "";
     document.getElementById("set-voice-greeting").value = settings.voice_greeting || "";
+    document.getElementById("set-ai-disclosure").checked = Boolean(settings.ai_disclosure);
     renderAutoSendToggles(settings.auto_send || {});
   } catch (err) {
     showError(`Failed to load settings: ${err.message}`);
@@ -349,8 +391,12 @@ document.getElementById("settings-form").addEventListener("submit", async (e) =>
         business_hours: document.getElementById("set-hours").value,
         greeting_message: document.getElementById("set-greeting").value,
         voice_greeting: document.getElementById("set-voice-greeting").value,
+        ai_disclosure: document.getElementById("set-ai-disclosure").checked,
       }),
     });
+    const saved = document.getElementById("settings-saved");
+    saved.textContent = "Saved";
+    setTimeout(() => { saved.textContent = ""; }, 2500);
   } catch (err) {
     showError(`Failed to save settings: ${err.message}`);
   }
@@ -393,6 +439,7 @@ async function loadIntegrationStatus() {
 
 loadEmails();
 loadCalls();
+loadContacts();
 loadKb();
 loadSettings();
 loadIntegrationStatus();

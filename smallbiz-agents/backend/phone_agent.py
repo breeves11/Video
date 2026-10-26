@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from . import calls_repo, classifier, knowledge_base, settings_repo, twiml, twilio_sms
+from .limits import MAX_LLM_INPUT_CHARS, MAX_STORED_BODY_CHARS, clip
 
 _MISSED_STATUSES = {"no-answer", "busy", "failed"}
 
@@ -60,12 +61,15 @@ def _draft_spoken_response(speech_text: str, category: str) -> SpokenResponse:
 def handle_incoming_call(call_sid: str, from_number: str, to_number: Optional[str]) -> str:
     calls_repo.upsert_call(call_sid, from_number, to_number, status="in_progress")
     greeting = settings_repo.get("voice_greeting")
+    if settings_repo.get("ai_disclosure"):
+        business_name = settings_repo.get("business_name")
+        greeting = f"You've reached the automated assistant for {business_name}. {greeting}"
     action_url = twiml.voice_url("/api/phone/gather")
     return twiml.gather_speech(greeting, action_url)
 
 
 def handle_gather(call_sid: str, speech_result: str) -> str:
-    speech_result = (speech_result or "").strip()
+    speech_result = clip((speech_result or "").strip(), MAX_LLM_INPUT_CHARS)
     if not speech_result:
         record_url = twiml.voice_url("/api/phone/recording")
         return twiml.say_and_offer_voicemail(
@@ -108,6 +112,7 @@ def handle_recording(call_sid: str, recording_url: Optional[str]) -> str:
 def handle_transcription(call_sid: str, transcription_text: Optional[str]) -> None:
     if not transcription_text:
         return
+    transcription_text = clip(transcription_text, MAX_STORED_BODY_CHARS)
     result = classifier.classify(transcription_text, channel="phone")
     from . import llm_client
 

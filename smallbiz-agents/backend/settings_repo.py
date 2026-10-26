@@ -14,6 +14,12 @@ DEFAULTS = {
     "business_hours": "Mon-Fri 9am-5pm",
     "greeting_message": "Thanks for reaching out! Here's what I found:",
     "voice_greeting": "Thanks for calling. How can I help you today?",
+    # Tell customers they're dealing with an AI (spoken at the start of a
+    # call, and a footer on drafted emails). On by default: some
+    # jurisdictions require it for automated customer interactions, so the
+    # business should only switch it off after confirming that's allowed
+    # where they operate.
+    "ai_disclosure": True,
     # Categories where the AI-drafted reply/response is sent automatically
     # without human review. Off by default for everything except plain FAQs
     # -- complaints, quotes, and scheduling requests usually need a human

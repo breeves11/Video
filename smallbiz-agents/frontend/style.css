@@ -205,8 +205,18 @@ textarea { resize: vertical; min-height: 4.5rem; }
 .inbox-item-head strong { font-size: 0.95rem; }
 .inbox-item .meta { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
 .inbox-item .body-text { margin-top: 0.6rem; font-size: 0.9rem; white-space: pre-wrap; }
+.inbox-item .attachments {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px dashed var(--warn);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.inbox-item .attachments .hint { display: block; margin-top: 0.2rem; }
 .inbox-item .draft-box { margin-top: 0.6rem; }
-.inbox-item .draft-box textarea { min-height: 6rem; }
+.inbox-item .draft-box textarea { min-height: 12rem; }
+
+.save-status { color: var(--accent-2); font-size: 0.85rem; font-weight: 600; align-self: center; }
 .inbox-item .actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }
 
 .toggle-row {

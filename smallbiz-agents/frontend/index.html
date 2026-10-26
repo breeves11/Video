@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Small Business AI Agents</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233b6fed'/%3E%3Cpath d='M8 11h16v10H8z' fill='none' stroke='white' stroke-width='2.2'/%3E%3Cpath d='M8 11l8 6 8-6' fill='none' stroke='white' stroke-width='2.2'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -18,6 +19,7 @@
     <nav class="tabs">
       <button class="tab-btn active" data-tab="inbox">Inbox</button>
       <button class="tab-btn" data-tab="calls">Calls</button>
+      <button class="tab-btn" data-tab="contacts">Contacts</button>
       <button class="tab-btn" data-tab="kb">Knowledge Base</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
     </nav>
@@ -110,6 +112,26 @@
       </div>
     </section>
 
+    <!-- CONTACTS -->
+    <section id="tab-contacts" class="tab-panel">
+      <div class="card">
+        <div class="section-header">
+          <h2>Contacts</h2>
+          <button id="refresh-contacts" class="btn-secondary">Refresh</button>
+        </div>
+        <p class="hint">Everyone who has emailed or called, most recent first. Built automatically from your inbox and call log.</p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Contact</th><th>Channels</th><th>Interactions</th><th>Needs attention</th><th>Last contact</th></tr>
+            </thead>
+            <tbody id="contacts-body"></tbody>
+          </table>
+        </div>
+        <p id="contacts-empty" class="empty-state" style="display:none">No contacts yet -- they'll appear here after the first email or call.</p>
+      </div>
+    </section>
+
     <!-- KNOWLEDGE BASE -->
     <section id="tab-kb" class="tab-panel">
       <div class="card">
@@ -162,7 +184,15 @@
             <label for="set-voice-greeting">Phone greeting (spoken)</label>
             <input id="set-voice-greeting" type="text" />
           </div>
+          <div class="field" style="flex-basis:100%">
+            <label style="display:flex; gap:0.5rem; align-items:center; font-size:0.9rem; color:var(--text); font-weight:500;">
+              <input id="set-ai-disclosure" type="checkbox" style="width:auto;" />
+              Tell customers they're talking to an AI assistant
+            </label>
+            <p class="hint" style="margin:0;">Adds a short line to the start of calls and the end of drafted emails. Some places require this by law -- check before turning it off.</p>
+          </div>
           <button type="submit">Save</button>
+          <span id="settings-saved" class="save-status" role="status"></span>
         </form>
       </div>
 

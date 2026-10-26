@@ -2,12 +2,19 @@ services:
   - type: web
     name: smallbiz-ai-agents
     runtime: python
+    # The free plan has no persistent disk: the database below lives in
+    # /tmp and is wiped on every deploy/restart. Fine for a trial; for a
+    # real customer, switch to a paid instance and uncomment the disk.
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    # disk:
+    #   name: data
+    #   mountPath: /var/data
+    #   sizeGB: 1
     envVars:
       - key: DATABASE_PATH
-        value: /tmp/app.db
+        value: /tmp/app.db           # /var/data/app.db once the disk is attached
       - key: RATE_LIMIT_PER_MINUTE
         value: "20"
       - key: ANTHROPIC_API_KEY
@@ -16,6 +23,8 @@ services:
         sync: false
       - key: APP_PASSWORD
         sync: false
+      - key: INBOUND_EMAIL_SECRET
+        generateValue: true
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

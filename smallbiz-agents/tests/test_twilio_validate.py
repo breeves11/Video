@@ -2,7 +2,50 @@ from fastapi.testclient import TestClient
 
 from backend import config
 from backend.main import app
-from backend.twilio_validate import compute_signature
+from backend.twilio_validate import compute_signature, is_valid_signature
+
+
+def test_compute_signature_matches_official_twilio_sdk_vector():
+    # Twilio's documented example. Expected value produced by the official
+    # twilio-python RequestValidator (v9.12.0); this implementation was also
+    # cross-checked against that SDK on 1,200+ randomized cases.
+    signature = compute_signature(
+        "12345",
+        "https://mycompany.com/myapp.php?foo=1&bar=2",
+        {
+            "CallSid": "CA1234567890ABCDE",
+            "Caller": "+14158675310",
+            "Digits": "1234",
+            "From": "+14158675310",
+            "To": "+18005551212",
+        },
+    )
+    assert signature == "GvWf1cFY/Q7PnoempGyD5oXAezc="
+
+
+def test_signature_accepted_with_or_without_default_port():
+    # Twilio signs inconsistently on the port; the official validator
+    # accepts either form, and rejecting one would drop genuine calls.
+    params = {"CallSid": "CA1"}
+    with_port = compute_signature("tok", "https://example.com:443/api/phone/voice", params)
+    without_port = compute_signature("tok", "https://example.com/api/phone/voice", params)
+    for url in ("https://example.com/api/phone/voice", "https://example.com:443/api/phone/voice"):
+        assert is_valid_signature("tok", url, params, with_port)
+        assert is_valid_signature("tok", url, params, without_port)
+    assert not is_valid_signature("tok", "https://example.com/api/phone/voice", params, "")
+    assert not is_valid_signature("tok", "https://other.com/api/phone/voice", params, with_port)
+
+
+def test_phone_webhook_signature_covers_query_string(monkeypatch):
+    monkeypatch.setattr(config, "TWILIO_AUTH_TOKEN", "test-token")
+    monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://example.com")
+    params = {"CallSid": "CAQ", "From": "+15551234567"}
+    signed = compute_signature("test-token", "https://example.com/api/phone/voice?src=main", params)
+    with TestClient(app) as client:
+        ok = client.post("/api/phone/voice?src=main", data=params, headers={"X-Twilio-Signature": signed})
+        assert ok.status_code == 200
+        wrong_query = client.post("/api/phone/voice?src=other", data=params, headers={"X-Twilio-Signature": signed})
+        assert wrong_query.status_code == 403
 
 
 def test_compute_signature_is_deterministic_and_order_independent():

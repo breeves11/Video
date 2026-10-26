@@ -1,37 +1,45 @@
+import json
 from typing import Optional
 
 from . import db
 
 
+def _to_dict(row) -> Optional[dict]:
+    if row is None:
+        return None
+    item = dict(row)
+    item["attachments"] = json.loads(item["attachments"]) if item.get("attachments") else []
+    return item
+
+
 def create_email(contact_email: str, contact_name: Optional[str], subject: str, body: str,
                   category: str, urgency: str, ai_draft: Optional[str], ai_source: str,
-                  status: str, thread_id: Optional[str] = None) -> int:
+                  status: str, thread_id: Optional[str] = None,
+                  attachments: Optional[list] = None) -> int:
     with db.session() as conn:
         cursor = conn.execute(
             """
             INSERT INTO emails (contact_email, contact_name, subject, body, category, urgency,
-                                 ai_draft, ai_source, status, thread_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 ai_draft, ai_source, status, thread_id, attachments, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (contact_email, contact_name, subject, body, category, urgency, ai_draft, ai_source,
-             status, thread_id, db.now_iso()),
+             status, thread_id, json.dumps(attachments) if attachments else None, db.now_iso()),
         )
         return cursor.lastrowid
 
 
 def get_email(email_id: int) -> Optional[dict]:
     with db.session() as conn:
-        row = conn.execute("SELECT * FROM emails WHERE id = ?", (email_id,)).fetchone()
-        return dict(row) if row else None
+        return _to_dict(conn.execute("SELECT * FROM emails WHERE id = ?", (email_id,)).fetchone())
 
 
 def get_by_thread_id(thread_id: str) -> Optional[dict]:
     with db.session() as conn:
-        row = conn.execute(
+        return _to_dict(conn.execute(
             "SELECT * FROM emails WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1",
             (thread_id,),
-        ).fetchone()
-        return dict(row) if row else None
+        ).fetchone())
 
 
 def list_emails(status: Optional[str] = None, limit: int = 50) -> list:
@@ -45,7 +53,7 @@ def list_emails(status: Optional[str] = None, limit: int = 50) -> list:
             rows = conn.execute(
                 "SELECT * FROM emails ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [_to_dict(row) for row in rows]
 
 
 def update_status(email_id: int, status: str, ai_draft: Optional[str] = None,

@@ -11,6 +11,7 @@ billed SMS text-back to an arbitrary number.
 import base64
 import hashlib
 import hmac
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import HTTPException, Request
 
@@ -30,8 +31,30 @@ def _webhook_url(request: Request) -> str:
     # you configured in the console, which would otherwise make every
     # signature check fail.
     if config.PUBLIC_BASE_URL:
-        return f"{config.PUBLIC_BASE_URL}{request.url.path}"
+        query = f"?{request.url.query}" if request.url.query else ""
+        return f"{config.PUBLIC_BASE_URL}{request.url.path}{query}"
     return str(request.url)
+
+
+def _url_variants(url: str) -> list:
+    """The URL with and without its default port. Twilio doesn't sign
+    consistently on this point, so its official validator accepts either --
+    checking only one form would reject some genuine calls."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    if parts.port:
+        return [url, urlunsplit(parts._replace(netloc=host))]
+    default_port = 443 if parts.scheme == "https" else 80
+    return [url, urlunsplit(parts._replace(netloc=f"{parts.netloc}:{default_port}"))]
+
+
+def is_valid_signature(auth_token: str, url: str, params: dict, signature: str) -> bool:
+    if not signature:
+        return False
+    return any(
+        hmac.compare_digest(compute_signature(auth_token, variant, params), signature)
+        for variant in _url_variants(url)
+    )
 
 
 async def verify_twilio_signature(request: Request) -> None:
@@ -43,8 +66,5 @@ async def verify_twilio_signature(request: Request) -> None:
 
     signature = request.headers.get("x-twilio-signature", "")
     form = await request.form()
-    params = dict(form)
-    expected = compute_signature(config.TWILIO_AUTH_TOKEN, _webhook_url(request), params)
-
-    if not signature or not hmac.compare_digest(expected, signature):
+    if not is_valid_signature(config.TWILIO_AUTH_TOKEN, _webhook_url(request), dict(form), signature):
         raise HTTPException(status_code=403, detail="Invalid Twilio signature")

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS emails (
     ai_source TEXT NOT NULL DEFAULT 'template',
     status TEXT NOT NULL DEFAULT 'pending',
     thread_id TEXT,
+    attachments TEXT,
     created_at TEXT NOT NULL,
     sent_at TEXT
 );
@@ -63,9 +64,21 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+# Columns added after a table first shipped. CREATE TABLE IF NOT EXISTS
+# won't add them to a database created by an older version, so init_db adds
+# any that are missing.
+_ADDED_COLUMNS = [
+    ("emails", "attachments", "TEXT"),
+]
+
+
 def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(SCHEMA)
+        for table, column, decl in _ADDED_COLUMNS:
+            existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
 
 @contextmanager

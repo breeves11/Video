@@ -38,6 +38,11 @@ Twilio.
    parse providers like SendGrid/Postmark/Mailgun) or by polling a
    mailbox directly over IMAP (`backend/imap_client.py`,
    `backend/scheduler.py`), whichever fits your existing email setup.
+   HTML-only emails are converted to text. Attachment *names* are recorded
+   and shown in the inbox; the agent can't read attachment contents, so an
+   email with attachments is never auto-sent, and the AI is told not to
+   claim it reviewed them. Very long emails are trimmed (`backend/limits.py`)
+   rather than rejected.
 2. **Phone agent** (`backend/phone_agent.py`) -- answers Twilio voice
    webhooks with TwiML (`backend/twiml.py`): greets the caller, listens
    for speech, classifies + answers using the same knowledge base, and
@@ -57,11 +62,15 @@ Twilio.
    connected yet -- these post to separate, Basic-Auth-protected endpoints
    (`/api/emails/simulate`, `/api/phone/simulate/*`) so they keep working
    even once the real webhooks are locked down (see Security, below).
-5. **Contacts** (`backend/contacts.py`, `GET /api/contacts`) -- a
-   per-customer rollup derived from the email and call history (channels
-   used, interaction count, open items, last contact), grouped by email
-   address / phone number. No dashboard tab yet, but the data's there to
-   build one against.
+5. **Contacts** (Contacts tab; `backend/contacts.py`, `GET /api/contacts`)
+   -- everyone who has emailed or called, built automatically from the
+   inbox and call log: channels used, interaction count, open items, last
+   contact.
+6. **AI disclosure** (Settings tab, on by default) -- the phone agent opens
+   with "You've reached the automated assistant for <business>", and
+   drafted emails end with a one-line AI note. Some jurisdictions require
+   telling customers they're dealing with an automated system; switch it
+   off only after confirming that's allowed where the business operates.
 
 Everything works with zero external services configured -- classification
 falls back to keyword rules, replies fall back to templates grounded on
@@ -92,7 +101,9 @@ docker compose up --build
 Open http://localhost:8001 (the compose file maps to 8001 so it doesn't
 collide with the unrelated app that also lives in this repo, which uses
 8000). Data persists in the `smallbiz_data` Docker volume across restarts
-(`docker compose down -v` wipes it).
+(`docker compose down -v` wipes it). The container restarts automatically
+after a crash or reboot (`restart: unless-stopped`; enable "start Docker on
+login/boot" on the host too).
 
 ## Connecting it to real email and phone
 
@@ -185,40 +196,66 @@ source IP, so a very high call volume through Twilio's shared edge IPs
 could in theory hit the same bucket; raise it if a real customer's normal
 traffic starts tripping it.
 
-### Production readiness checklist
+## Going live
 
-Code-level gaps are closed above; these are account/ops items to work
-through with each business before their first real customer message flows
-through the system -- none of them are things this codebase can fix for
-you:
+**1. Run the preflight check** with the deployment's real environment:
 
-- **Twilio A2P 10DLC registration.** U.S. carriers filter/block SMS from
-  unregistered business use cases -- the missed-call text-back won't
-  reliably deliver until the Twilio account's messaging use case is
-  registered in the Twilio console.
-- **Email deliverability (SPF/DKIM/DMARC).** Set these up for whatever
-  domain `SMTP_FROM_ADDRESS` uses, or AI-drafted replies are likely to
-  land in the customer's spam folder -- which looks like the agent is
-  broken even when it's working correctly.
-- **Backups.** The SQLite file at `DATABASE_PATH` is the only copy of
-  every email, call transcript, and FAQ entry. On a persistent disk,
-  schedule something to copy it out regularly (a cron `cp`/`sqlite3
-  .backup`, or a tool like Litestream for continuous replication) before
-  a real customer's data depends on it surviving a disk failure.
-- **Data retention / privacy.** There's no automatic retention policy or
-  bulk "delete everything for this contact" tool yet -- `DELETE
-  /api/emails/{id}` and per-call deletion are manual and one-at-a-time.
-  Decide what the business's privacy policy commits to before real
-  customer PII (emails, phone numbers, voicemail transcripts) starts
-  accumulating.
+```bash
+python scripts/preflight.py          # configuration: auth, secrets, URLs, storage, FAQ
+python scripts/preflight.py --live   # + SMTP/IMAP logins, Twilio account, the Twilio
+                                     #   number's webhook URLs, public URL, Anthropic key
+# in Docker: docker compose exec app python scripts/preflight.py --live
+```
+
+It prints PASS/WARN/FAIL per item and exits non-zero on any FAIL, so it
+can gate a deploy. `--live` sends no email, SMS, or calls -- it logs in and
+reads configuration only. Notably, it confirms the Twilio number's "A call
+comes in" and status-callback URLs actually point at this deployment,
+which is the easiest setup step to get subtly wrong.
+
+**2. Schedule backups.** The SQLite file is the only copy of every email,
+call transcript, and FAQ entry:
+
+```bash
+python scripts/backup_db.py --dest /path/on/other/storage --keep 14
+# cron, nightly:  15 3 * * * cd /path/to/smallbiz-agents && .venv/bin/python scripts/backup_db.py --dest /mnt/backups
+# Docker:         docker compose exec app python scripts/backup_db.py --dest /app/backups   (lands in ./backups on the host)
+```
+
+It uses SQLite's online backup API (safe while the app is running) and
+prunes old snapshots. A backup on the same disk only protects against
+mistakes, not disk loss -- send it somewhere else.
+
+**3. Place a real test call and a real test email** before the business
+announces anything: call the number from your own phone, send an email to
+the connected inbox, and approve a reply from the dashboard.
+
+**4. Account/ops items** no code can do for you, per business:
+
+- **Twilio A2P 10DLC registration** -- U.S. carriers filter SMS from
+  unregistered business use cases, so the missed-call text-back won't
+  reliably deliver until it's approved. This can take days: start it first.
+- **Email deliverability (SPF/DKIM/DMARC)** for the domain
+  `SMTP_FROM_ADDRESS` uses, or AI-drafted replies are likely to land in
+  spam -- which looks like the agent is broken when it isn't.
+- **AI disclosure** -- on by default (see "What it does"); confirm with
+  whoever handles compliance before switching it off.
+- **Data retention / privacy** -- there's no automatic retention policy or
+  bulk "delete everything for this contact" tool yet; deletion is per
+  email/call. Decide what the business's privacy policy commits to before
+  customer PII (emails, phone numbers, voicemail transcripts) accumulates.
+- **Persistent storage** -- the included `render.yaml` uses Render's free
+  plan with the database in `/tmp`, which is wiped on every deploy. For a
+  real customer, use a paid instance with the disk block uncommented (or
+  any host with a persistent volume).
 
 ## API
 
 - `GET    /api/health` -- status + which integrations are active, last IMAP poll outcome, auth misconfiguration warning
-- `GET    /api/settings` / `PUT /api/settings` -- business name/hours/greetings, auto-send toggles
+- `GET    /api/settings` / `PUT /api/settings` -- business name/hours/greetings, auto-send toggles, `ai_disclosure`
 - `GET    /api/kb` / `POST /api/kb` / `PUT /api/kb/{id}` / `DELETE /api/kb/{id}` -- FAQ entries
 - `GET    /api/contacts?limit=` -- per-customer rollup derived from email + call history
-- `POST   /api/emails/inbound` -- real webhook; requires `X-Inbound-Secret` if `INBOUND_EMAIL_SECRET` is set. `{from_address, subject, body, thread_id?}` → classify + draft (+ auto-send if enabled). Deduplicated on `thread_id` when provided.
+- `POST   /api/emails/inbound` -- real webhook; requires `X-Inbound-Secret` if `INBOUND_EMAIL_SECRET` is set. `{from_address, subject, body, thread_id?, attachments?: [filename, ...]}` → classify + draft (+ auto-send if enabled and there are no attachments). Deduplicated on `thread_id` when provided. Absurd payloads (e.g. body over 500k chars) get a 422; long-but-real ones are trimmed.
 - `POST   /api/emails/simulate` -- same body/behavior, for the dashboard's own test panel; Basic-Auth protected instead of secret-protected
 - `GET    /api/emails?status=&limit=` -- inbox listing
 - `GET    /api/emails/{id}` -- single email

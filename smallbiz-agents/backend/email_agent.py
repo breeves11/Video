@@ -11,8 +11,17 @@ from email.utils import parseaddr
 from typing import Optional
 
 from . import classifier, config, emails_repo, knowledge_base, settings_repo
+from .limits import (
+    MAX_LLM_INPUT_CHARS,
+    MAX_STORED_BODY_CHARS,
+    MAX_SUBJECT_CHARS,
+    clip,
+    clip_attachments,
+)
 
 logger = logging.getLogger(__name__)
+
+AI_DISCLOSURE_FOOTER = "\n\n--\nThis reply was written with help from an AI assistant."
 
 _CATEGORY_LABELS = {
     "faq": "a general question",
@@ -30,7 +39,8 @@ class Draft:
     source: str  # "llm" or "template"
 
 
-def _draft_with_llm(subject: str, body: str, category: str, kb_context: str) -> Optional[str]:
+def _draft_with_llm(subject: str, body: str, category: str, kb_context: str,
+                    attachments: list) -> Optional[str]:
     from . import llm_client
 
     if not llm_client.is_available():
@@ -48,6 +58,12 @@ def _draft_with_llm(subject: str, body: str, category: str, kb_context: str) -> 
         f"Customer email (classified as {_CATEGORY_LABELS.get(category, 'a message')}):\n"
         f"Subject: {subject}\n\n{body}\n\n"
     )
+    if attachments:
+        prompt += (
+            f"The customer attached {len(attachments)} file(s): {', '.join(attachments)}. "
+            "You cannot see their contents -- don't claim to have reviewed them; say a team "
+            "member will look at them.\n\n"
+        )
     if kb_context:
         prompt += f"Relevant knowledge base entries:\n{kb_context}\n\n"
     prompt += "Write the reply email body only, no subject line."
@@ -96,14 +112,22 @@ def _draft_with_template(subject: str, body: str, category: str, kb_entries: lis
     )
 
 
-def draft_reply(subject: str, body: str, category: str) -> Draft:
+def draft_reply(subject: str, body: str, category: str,
+                attachments: Optional[list] = None) -> Draft:
+    body = clip(body, MAX_LLM_INPUT_CHARS)
+    attachments = attachments or []
     kb_entries = knowledge_base.search(f"{subject}\n{body}", limit=3)
     kb_context = knowledge_base.format_context(kb_entries)
 
-    llm_text = _draft_with_llm(subject, body, category, kb_context)
+    llm_text = _draft_with_llm(subject, body, category, kb_context, attachments)
     if llm_text:
-        return Draft(text=llm_text, source="llm")
-    return Draft(text=_draft_with_template(subject, body, category, kb_entries), source="template")
+        draft = Draft(text=llm_text, source="llm")
+    else:
+        draft = Draft(text=_draft_with_template(subject, body, category, kb_entries), source="template")
+
+    if category != "spam" and settings_repo.get("ai_disclosure"):
+        draft.text += AI_DISCLOSURE_FOOTER
+    return draft
 
 
 def send_email(to_address: str, subject: str, body: str) -> str:
@@ -133,7 +157,8 @@ def send_email(to_address: str, subject: str, body: str) -> str:
 
 
 def process_inbound_email(from_address: str, subject: str, body: str,
-                           thread_id: Optional[str] = None) -> dict:
+                           thread_id: Optional[str] = None,
+                           attachments: Optional[list] = None) -> dict:
     """Classify + draft a reply for a new inbound email, auto-sending it if
     the category is configured for auto-send. Returns the saved email row.
 
@@ -141,6 +166,10 @@ def process_inbound_email(from_address: str, subject: str, body: str,
     Message-ID re-delivered by a provider retry, or picked up twice by an
     IMAP poll), the existing row is returned unchanged instead of creating
     a duplicate -- otherwise an auto-send category could reply twice.
+
+    Emails with attachments are never auto-sent: the agent can't see what
+    was attached (a photo of damage, a PDF to quote from), so a human needs
+    to look before anything goes out.
     """
     if thread_id:
         existing = emails_repo.get_by_thread_id(thread_id)
@@ -149,9 +178,12 @@ def process_inbound_email(from_address: str, subject: str, body: str,
 
     contact_name, contact_email = parseaddr(from_address)
     contact_email = contact_email or from_address
+    subject = clip(subject, MAX_SUBJECT_CHARS)
+    body = clip(body, MAX_STORED_BODY_CHARS)
+    attachments = clip_attachments(attachments)
 
     result = classifier.classify(f"{subject}\n{body}", channel="email")
-    draft = draft_reply(subject, body, result.category)
+    draft = draft_reply(subject, body, result.category, attachments)
 
     status = "pending"
     email_id = emails_repo.create_email(
@@ -165,9 +197,11 @@ def process_inbound_email(from_address: str, subject: str, body: str,
         ai_source=draft.source,
         status=status,
         thread_id=thread_id,
+        attachments=attachments,
     )
 
-    if result.category != "spam" and settings_repo.is_auto_send(result.category):
+    if (result.category != "spam" and not attachments
+            and settings_repo.is_auto_send(result.category)):
         approve_and_send(email_id)
 
     return emails_repo.get_email(email_id)
