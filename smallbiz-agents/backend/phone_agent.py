@@ -7,7 +7,7 @@ completely unanswered.
 from dataclasses import dataclass
 from typing import Optional
 
-from . import calls_repo, classifier, knowledge_base, settings_repo, twiml, twilio_sms
+from . import calls_repo, classifier, db, knowledge_base, settings_repo, twiml, twilio_sms
 from .limits import MAX_LLM_INPUT_CHARS, MAX_STORED_BODY_CHARS, clip
 
 _MISSED_STATUSES = {"no-answer", "busy", "failed"}
@@ -92,7 +92,7 @@ def handle_gather(call_sid: str, speech_result: str) -> str:
         knowledge_base.search(speech_result, limit=1)
     )
     if resolvable:
-        calls_repo.update_call(call_sid, handled=1, status="completed")
+        calls_repo.update_call(call_sid, handled=1, handled_at=db.now_iso(), status="completed")
         return twiml.say_and_offer_voicemail(spoken.text, "", offer_voicemail=False)
 
     calls_repo.update_call(call_sid, callback_requested=1, status="needs_callback")
@@ -149,4 +149,7 @@ def handle_status_callback(call_sid: str, from_number: str, to_number: Optional[
         f"Hi, sorry we missed your call to {business_name}! We'll call you back soon. "
         f"Our hours are {business_hours}. Reply here if you'd like to leave a message now."
     )
-    return twilio_sms.send_sms(from_number, message)
+    sent = twilio_sms.send_sms(from_number, message)
+    if sent:
+        calls_repo.update_call(call_sid, textback_sent=1)
+    return sent

@@ -20,6 +20,7 @@
       <button class="tab-btn active" data-tab="inbox">Inbox</button>
       <button class="tab-btn" data-tab="calls">Calls</button>
       <button class="tab-btn" data-tab="contacts">Contacts</button>
+      <button class="tab-btn" data-tab="report">Report</button>
       <button class="tab-btn" data-tab="kb">Knowledge Base</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
     </nav>
@@ -129,6 +130,79 @@
           </table>
         </div>
         <p id="contacts-empty" class="empty-state" style="display:none">No contacts yet -- they'll appear here after the first email or call.</p>
+      </div>
+    </section>
+
+    <!-- REPORT -->
+    <section id="tab-report" class="tab-panel">
+      <div class="card">
+        <div class="section-header">
+          <div>
+            <h2 style="margin:0;">Last 7 days</h2>
+            <p id="report-period" class="report-period"></p>
+          </div>
+          <button id="refresh-report" class="btn-secondary">Refresh</button>
+        </div>
+        <div id="report-before-after"></div>
+        <div id="report-tiles" class="tile-row"></div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin:0;">Customer contacts per week</h2>
+        <p class="report-period">Emails and calls the agents handled, last 8 weeks</p>
+        <div class="chart-legend" aria-hidden="true">
+          <span><span class="swatch" style="background:var(--series-email)"></span>Emails</span>
+          <span><span class="swatch" style="background:var(--series-call)"></span>Calls</span>
+        </div>
+        <div id="report-chart" class="chart-wrap"></div>
+        <details class="table-view">
+          <summary>Show as table</summary>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Week</th><th class="num">Emails</th><th class="num">Calls</th><th class="num">Total</th></tr></thead>
+              <tbody id="report-table-body"></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+
+      <div class="card" id="report-settings">
+        <h2>Starting point &amp; weekly email</h2>
+        <p class="hint">Write down the business's numbers from <em>before</em> the agents went live -- the report compares against them.</p>
+        <form id="report-settings-form">
+          <div class="field">
+            <label for="baseline-missed">Missed calls per week, before</label>
+            <input id="baseline-missed" type="number" min="0" step="any" placeholder="e.g. 14" />
+          </div>
+          <div class="field">
+            <label for="baseline-reply">Typical email reply time before (hours)</label>
+            <input id="baseline-reply" type="number" min="0" step="any" placeholder="e.g. 6" />
+          </div>
+          <div class="field">
+            <label for="report-email">Send the report every Monday to</label>
+            <input id="report-email" type="email" placeholder="owner@business.com" />
+          </div>
+          <div class="field">
+            <label for="report-timezone">Business timezone</label>
+            <input id="report-timezone" type="text" list="tz-options" placeholder="America/Chicago" />
+            <datalist id="tz-options">
+              <option value="America/New_York"></option>
+              <option value="America/Chicago"></option>
+              <option value="America/Denver"></option>
+              <option value="America/Phoenix"></option>
+              <option value="America/Los_Angeles"></option>
+              <option value="America/Anchorage"></option>
+              <option value="Pacific/Honolulu"></option>
+              <option value="Europe/London"></option>
+              <option value="Australia/Sydney"></option>
+              <option value="UTC"></option>
+            </datalist>
+          </div>
+          <button type="submit">Save</button>
+          <button type="button" id="send-report-now" class="btn-secondary">Send me this report now</button>
+          <span id="report-settings-status" class="save-status" role="status"></span>
+        </form>
+        <p class="hint">The email goes out Monday at 8am in the business's timezone and covers the previous 7 days. It needs outbound email (SMTP) set up.</p>
       </div>
     </section>
 

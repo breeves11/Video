@@ -116,6 +116,13 @@ def config_checks() -> list:
             add(WARN, "Knowledge base", f"only {kb_count} entries -- add the business's common questions")
         if settings_repo.get("business_name") == settings_repo.DEFAULTS["business_name"]:
             add(WARN, "Business name", "still the placeholder 'Your Business' (Settings tab)")
+        if settings_repo.get("baseline_missed_calls_per_week") is None or \
+                settings_repo.get("baseline_email_reply_hours") is None:
+            add(WARN, "Starting point", "record the 'before' numbers in the Report tab -- they can't be measured later")
+        if not settings_repo.get("weekly_report_email"):
+            add(WARN, "Weekly report", "no recipient set (Report tab)")
+        elif settings_repo.get("timezone") == "UTC":
+            add(WARN, "Weekly report timezone", "still UTC -- the Monday 8am email will arrive at the wrong local time")
     else:
         add(WARN, "Knowledge base / settings", "no database yet -- start the app once and fill these in")
 

@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS emails (
     status TEXT NOT NULL DEFAULT 'pending',
     thread_id TEXT,
     attachments TEXT,
+    auto_sent INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     sent_at TEXT
 );
@@ -45,6 +46,8 @@ CREATE TABLE IF NOT EXISTS calls (
     recording_url TEXT,
     callback_requested INTEGER NOT NULL DEFAULT 0,
     handled INTEGER NOT NULL DEFAULT 0,
+    handled_at TEXT,
+    textback_sent INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -69,6 +72,9 @@ def get_connection() -> sqlite3.Connection:
 # any that are missing.
 _ADDED_COLUMNS = [
     ("emails", "attachments", "TEXT"),
+    ("emails", "auto_sent", "INTEGER NOT NULL DEFAULT 0"),
+    ("calls", "handled_at", "TEXT"),
+    ("calls", "textback_sent", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

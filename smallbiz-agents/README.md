@@ -71,6 +71,18 @@ Twilio.
    drafted emails end with a one-line AI note. Some jurisdictions require
    telling customers they're dealing with an automated system; switch it
    off only after confirming that's allowed where the business operates.
+7. **Results report** (Report tab; `backend/reports.py`) -- what the agents
+   did over the last 7 days: calls answered by the AI, missed calls
+   followed up (texted back or called back), typical email reply time, how
+   many replies went out automatically vs. approved by the owner, and
+   what's waiting right now -- each against the previous 7 days, plus an
+   8-week trend. Enter the business's **"before" numbers** (missed calls
+   per week, typical email reply time) and it shows *before vs now*, the
+   number that makes the case study. Every figure is measured from stored
+   data; there are no estimates or assumed time savings. With a recipient
+   and SMTP set, the same report is **emailed every Monday at 8am** in the
+   business's timezone (once a week, catching up if the app was down
+   Monday; a "Send me this report now" button tests it).
 
 Everything works with zero external services configured -- classification
 falls back to keyword rules, replies fall back to templates grounded on
@@ -226,11 +238,18 @@ It uses SQLite's online backup API (safe while the app is running) and
 prunes old snapshots. A backup on the same disk only protects against
 mistakes, not disk loss -- send it somewhere else.
 
-**3. Place a real test call and a real test email** before the business
+**3. Record the starting point.** Before switching anything on, write down
+the business's current missed calls per week (their phone's call log shows
+it) and typical email reply time, and enter them in the Report tab. You
+can't measure "before" after the fact -- and it's what the before-vs-now
+comparison and the Monday email are built around. Set the report recipient
+and timezone there too.
+
+**4. Place a real test call and a real test email** before the business
 announces anything: call the number from your own phone, send an email to
 the connected inbox, and approve a reply from the dashboard.
 
-**4. Account/ops items** no code can do for you, per business:
+**5. Account/ops items** no code can do for you, per business:
 
 - **Twilio A2P 10DLC registration** -- U.S. carriers filter SMS from
   unregistered business use cases, so the missed-call text-back won't
@@ -252,9 +271,11 @@ the connected inbox, and approve a reply from the dashboard.
 ## API
 
 - `GET    /api/health` -- status + which integrations are active, last IMAP poll outcome, auth misconfiguration warning
-- `GET    /api/settings` / `PUT /api/settings` -- business name/hours/greetings, auto-send toggles, `ai_disclosure`
+- `GET    /api/settings` / `PUT /api/settings` -- business name/hours/greetings, auto-send toggles, `ai_disclosure`, `timezone`, `weekly_report_email`, `baseline_missed_calls_per_week` / `baseline_email_reply_hours` (send `null` to clear a baseline)
 - `GET    /api/kb` / `POST /api/kb` / `PUT /api/kb/{id}` / `DELETE /api/kb/{id}` -- FAQ entries
 - `GET    /api/contacts?limit=` -- per-customer rollup derived from email + call history
+- `GET    /api/report?days=7&weeks=8` -- results for the period (cohort of emails/calls that arrived in it), the previous period, what's waiting now, a weekly trend, and before-vs-now against the baseline settings
+- `POST   /api/report/send` -- email the weekly report now, to the configured `weekly_report_email` only (rate-limited; 400 if no recipient or no SMTP, 502 if the send fails)
 - `POST   /api/emails/inbound` -- real webhook; requires `X-Inbound-Secret` if `INBOUND_EMAIL_SECRET` is set. `{from_address, subject, body, thread_id?, attachments?: [filename, ...]}` → classify + draft (+ auto-send if enabled and there are no attachments). Deduplicated on `thread_id` when provided. Absurd payloads (e.g. body over 500k chars) get a 422; long-but-real ones are trimmed.
 - `POST   /api/emails/simulate` -- same body/behavior, for the dashboard's own test panel; Basic-Auth protected instead of secret-protected
 - `GET    /api/emails?status=&limit=` -- inbox listing

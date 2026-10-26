@@ -57,7 +57,7 @@ def list_emails(status: Optional[str] = None, limit: int = 50) -> list:
 
 
 def update_status(email_id: int, status: str, ai_draft: Optional[str] = None,
-                   mark_sent: bool = False) -> bool:
+                   mark_sent: bool = False, auto_sent: Optional[bool] = None) -> bool:
     fields, values = ["status = ?"], [status]
     if ai_draft is not None:
         fields.append("ai_draft = ?")
@@ -65,6 +65,9 @@ def update_status(email_id: int, status: str, ai_draft: Optional[str] = None,
     if mark_sent:
         fields.append("sent_at = ?")
         values.append(db.now_iso())
+    if auto_sent is not None:
+        fields.append("auto_sent = ?")
+        values.append(1 if auto_sent else 0)
     values.append(email_id)
     with db.session() as conn:
         cursor = conn.execute(f"UPDATE emails SET {', '.join(fields)} WHERE id = ?", values)

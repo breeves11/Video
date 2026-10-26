@@ -20,6 +20,13 @@ DEFAULTS = {
     # business should only switch it off after confirming that's allowed
     # where they operate.
     "ai_disclosure": True,
+    # The weekly report. Baselines are the owner's own numbers from before
+    # the agents went live (None = not entered yet); the report compares
+    # against them. The timezone decides when "Monday morning" is.
+    "timezone": "UTC",
+    "weekly_report_email": "",
+    "baseline_missed_calls_per_week": None,
+    "baseline_email_reply_hours": None,
     # Categories where the AI-drafted reply/response is sent automatically
     # without human review. Off by default for everything except plain FAQs
     # -- complaints, quotes, and scheduling requests usually need a human

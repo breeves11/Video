@@ -1,12 +1,14 @@
 import logging
+import re
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
-from fastapi import Depends, FastAPI, Form, HTTPException
+from fastapi import Depends, FastAPI, Form, HTTPException, Query
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from . import (
     calls_repo,
@@ -18,6 +20,7 @@ from . import (
     knowledge_base,
     llm_client,
     phone_agent,
+    reports,
     scheduler,
     settings_repo,
 )
@@ -84,6 +87,33 @@ class SettingsUpdateRequest(BaseModel):
     voice_greeting: Optional[str] = Field(default=None, max_length=1_000)
     auto_send: Optional[dict[str, bool]] = None
     ai_disclosure: Optional[bool] = None
+    timezone: Optional[str] = Field(default=None, max_length=64)
+    weekly_report_email: Optional[str] = Field(default=None, max_length=320)
+    baseline_missed_calls_per_week: Optional[float] = Field(default=None, ge=0, le=10_000)
+    baseline_email_reply_hours: Optional[float] = Field(default=None, ge=0, le=10_000)
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_timezone(cls, value):
+        if value is None:
+            return value
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("unknown timezone -- use an IANA name like America/Chicago")
+        return value
+
+    @field_validator("weekly_report_email")
+    @classmethod
+    def _valid_email(cls, value):
+        if value and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value.strip()):
+            raise ValueError("not a valid email address")
+        return value.strip() if value else value
+
+
+# Settings an explicit null is allowed to clear; every other setting ignores
+# nulls so a partial update can't blank out e.g. the business name.
+_CLEARABLE_SETTINGS = {"baseline_missed_calls_per_week", "baseline_email_reply_hours"}
 
 
 # --- Health / settings ---------------------------------------------------
@@ -110,7 +140,10 @@ def get_settings():
 
 @app.put("/api/settings")
 def update_settings(req: SettingsUpdateRequest):
-    values = {k: v for k, v in req.model_dump().items() if v is not None}
+    values = {
+        k: v for k, v in req.model_dump(exclude_unset=True).items()
+        if v is not None or k in _CLEARABLE_SETTINGS
+    }
     return settings_repo.update_many(values)
 
 
@@ -213,6 +246,29 @@ def poll_mailbox():
     if not status["success"]:
         raise HTTPException(status_code=502, detail=f"IMAP poll failed: {status['error']}")
     return {"processed": count}
+
+
+# --- Results report --------------------------------------------------------
+
+@app.get("/api/report")
+def get_report(days: int = Query(default=7, ge=1, le=90), weeks: int = Query(default=8, ge=1, le=26)):
+    return reports.build_report(days=days, weeks=weeks)
+
+
+@app.post("/api/report/send", dependencies=[Depends(rate_limit)])
+def send_report_now():
+    """Email the weekly report right now, to the configured recipient only --
+    deliberately no free-form address, so this can't be used to send mail
+    to arbitrary people."""
+    recipient = settings_repo.get("weekly_report_email")
+    if not recipient:
+        raise HTTPException(status_code=400, detail="Set a report email address first")
+    result = reports.send_report(recipient)
+    if result == "unconfigured":
+        raise HTTPException(status_code=400, detail="Outbound email (SMTP) isn't set up yet")
+    if result == "failed":
+        raise HTTPException(status_code=502, detail="The email server rejected the message -- check SMTP settings")
+    return {"sent_to": recipient}
 
 
 # --- Calls ---------------------------------------------------------------

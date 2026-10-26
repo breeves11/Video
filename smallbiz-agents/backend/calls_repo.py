@@ -66,9 +66,19 @@ def list_calls(handled: Optional[bool] = None, limit: int = 50) -> list:
 
 
 def mark_handled(call_id: int, handled: bool = True) -> bool:
+    """`handled_at` keeps the first time a call was followed up (re-marking
+    doesn't move it), so time-to-callback in the report stays honest."""
+    now = db.now_iso()
     with db.session() as conn:
-        cursor = conn.execute(
-            "UPDATE calls SET handled = ?, updated_at = ? WHERE id = ?",
-            (1 if handled else 0, db.now_iso(), call_id),
-        )
+        if handled:
+            cursor = conn.execute(
+                "UPDATE calls SET handled = 1, handled_at = COALESCE(handled_at, ?), updated_at = ? "
+                "WHERE id = ?",
+                (now, now, call_id),
+            )
+        else:
+            cursor = conn.execute(
+                "UPDATE calls SET handled = 0, handled_at = NULL, updated_at = ? WHERE id = ?",
+                (now, call_id),
+            )
         return cursor.rowcount > 0

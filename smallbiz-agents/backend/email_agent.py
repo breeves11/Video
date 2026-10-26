@@ -202,7 +202,7 @@ def process_inbound_email(from_address: str, subject: str, body: str,
 
     if (result.category != "spam" and not attachments
             and settings_repo.is_auto_send(result.category)):
-        approve_and_send(email_id)
+        approve_and_send(email_id, auto=True)
 
     return emails_repo.get_email(email_id)
 
@@ -214,7 +214,12 @@ _SEND_RESULT_TO_STATUS = {
 }
 
 
-def approve_and_send(email_id: int, override_text: Optional[str] = None) -> dict:
+def approve_and_send(email_id: int, override_text: Optional[str] = None,
+                     auto: bool = False) -> dict:
+    """Send the reply. `auto` marks a send the agent made on its own (an
+    auto-send category) rather than one the owner approved -- recorded only
+    when the send actually succeeds, so a failed auto-send the owner later
+    retries counts as the owner's."""
     row = emails_repo.get_email(email_id)
     if row is None:
         raise ValueError("email not found")
@@ -223,6 +228,9 @@ def approve_and_send(email_id: int, override_text: Optional[str] = None) -> dict
     reply_subject = f"Re: {row['subject']}" if row["subject"] else "Re: your message"
 
     result = send_email(row["contact_email"], reply_subject, reply_text or "")
-    new_status = _SEND_RESULT_TO_STATUS[result]
-    emails_repo.update_status(email_id, new_status, ai_draft=reply_text, mark_sent=(result == "sent"))
+    sent = result == "sent"
+    emails_repo.update_status(
+        email_id, _SEND_RESULT_TO_STATUS[result], ai_draft=reply_text,
+        mark_sent=sent, auto_sent=(auto and sent),
+    )
     return emails_repo.get_email(email_id)
