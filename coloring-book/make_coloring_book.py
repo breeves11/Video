@@ -1,33 +1,99 @@
-"""Generate a printable Christian Christmas coloring book for kids (PDF).
+"""Generate the interior of a Christian Christmas coloring book for kids.
 
-Every page tells part of the Nativity story with a Bible verse (KJV,
+Every story page tells part of the Nativity story with a Bible verse (KJV,
 public domain), a theme word, and a "Think about it" question for
 families or Sunday school classes.
 
-    python3 coloring-book/make_coloring_book.py
+    python3 coloring-book/make_coloring_book.py [--author "Your Name"]
 
-Writes coloring-book/christian-christmas-coloring-book.pdf (US Letter).
-Requires: reportlab
+Writes coloring-book/kdp/interior.pdf, ready for Amazon KDP paperback:
+8.5 x 11 in trim, no bleed, black ink, all fonts embedded, 32 pages.
+Each coloring page is printed on a right-hand page with a color-test
+page behind it so markers do not bleed into the next picture.
+Requires: reportlab. Run make_cover.py afterwards for the color cover.
 """
 
+import argparse
 import math
 import os
 
 from reportlab.lib.colors import black, white
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import simpleSplit
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 W, H = letter
 LW = 3.0
 AX, AY, AW, AH = 50, 235, 512, 455  # art area on verse pages
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   "christian-christmas-coloring-book.pdf")
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(HERE, "kdp", "interior.pdf")
+BOOK_TITLE = "Jesus Is Born!"
+BOOK_SUBTITLE = "A Christmas Coloring Book of Bible Verses"
+YEAR = 2026
+# Shrink every page about its center so the art clears KDP's minimum
+# margins (0.375 in gutter, 0.25 in outside) with room to spare: the
+# outer frame lands about 0.5 in from every trim edge.
+PAGE_SCALE = 0.94
+
+_LIB = "/usr/share/fonts/truetype/liberation"
+FONTS = {
+    "Title": os.path.join(HERE, "fonts", "Fredoka-Bold.ttf"),
+    "Round": os.path.join(HERE, "fonts", "Fredoka-Medium.ttf"),
+    "Sans": os.path.join(_LIB, "LiberationSans-Regular.ttf"),
+    "Sans-Bold": os.path.join(_LIB, "LiberationSans-Bold.ttf"),
+    "Serif-Italic": os.path.join(_LIB, "LiberationSerif-Italic.ttf"),
+    "Serif-Bold": os.path.join(_LIB, "LiberationSerif-Bold.ttf"),
+    "Serif-BoldItalic": os.path.join(_LIB, "LiberationSerif-BoldItalic.ttf"),
+}
+
+
+def register_fonts():
+    """KDP rejects PDFs with unembedded fonts, so every font is a TrueType file."""
+    for name, path in FONTS.items():
+        if name not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(name, path))
 
 c = None  # active canvas
+PAL = {}  # fill colors by part name; empty = black-and-white line art
+
+
+def fc(key):
+    c.setFillColor(PAL.get(key, white))
+
+
+class palette:
+    """with palette(robe=..., skin=...): color the parts drawn inside."""
+
+    def __init__(self, **kw):
+        self.kw = kw
+
+    def __enter__(self):
+        global PAL
+        self.old = PAL
+        PAL = dict(PAL, **self.kw)
+
+    def __exit__(self, *a):
+        global PAL
+        PAL = self.old
 
 
 # ---------------------------------------------------------------- primitives
+
+def start():
+    """Begin a page: scale it into KDP's safe area."""
+    c.saveState()
+    c.translate(W / 2, H / 2)
+    c.scale(PAGE_SCALE, PAGE_SCALE)
+    c.translate(-W / 2, -H / 2)
+    reset()
+
+
+def end_page():
+    c.restoreState()
+    c.showPage()
+
 
 def reset():
     c.setLineWidth(LW)
@@ -96,11 +162,11 @@ def rect(x, y, w, h, r=0):
         c.rect(x, y, w, h, stroke=1, fill=1)
 
 
-def hollow(fn, w=10):
+def hollow(fn, w=10, key=None):
     """Stroke a path thick in black, then thinner in white: a colorable band."""
     lw(w)
     fn()
-    c.setStrokeColor(white)
+    c.setStrokeColor(PAL.get(key, white))
     lw(w - 2 * LW)
     fn()
     c.setStrokeColor(black)
@@ -118,8 +184,9 @@ def scallops(p, pts, bulge):
                   ax + dx * .8 + nx * b, ay + dy * .8 + ny * b, bx, by)
 
 
-def blob(circles):
+def blob(circles, key="cloud"):
     """Union of circles as one outline (cloud, wool)."""
+    fc(key)
     for x, y, r in circles:
         circle(x, y, r)
     for x, y, r in circles:
@@ -144,6 +211,7 @@ def star(cx, cy, ro, ri=None, n=5, rot=90):
         r = ro if i % 2 == 0 else ri
         a = math.radians(rot + i * 180 / n)
         pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+    fc("star")
     poly(pts)
 
 
@@ -171,7 +239,9 @@ def bstar(cx, cy, r):
         else:
             rr = r * 0.55
         pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    fc("bstar")
     poly(pts)
+    fc("bstar_c")
     circle(cx, cy, r * 0.16)
 
 
@@ -184,6 +254,7 @@ def sky(points):
 
 
 def heart(cx, cy, s):
+    fc("heart")
     p = P()
     p.moveTo(cx, cy - s)
     p.curveTo(cx - 1.25 * s, cy - 0.1 * s, cx - 0.75 * s, cy + 1.0 * s, cx, cy + 0.42 * s)
@@ -211,6 +282,7 @@ def holly_leaf(x, y, L, deg):
     scallops(p, top, 0.22)
     scallops(p, bot, 0.22)
     p.close()
+    fc("leaf")
     draw(p)
     lw(1.8)
     line(0, 0, .85 * L, 0)
@@ -222,6 +294,7 @@ def holly(x, y, s, flip=False):
     d = -1 if flip else 1
     holly_leaf(x, y, s, 90 + d * 70)
     holly_leaf(x, y, s, 90 + d * 15)
+    fc("berry")
     for dx, dy in ((0, 0), (.22, .1), (.05, .25)):
         circle(x + d * dx * s, y + dy * s, .13 * s)
 
@@ -234,6 +307,7 @@ def hills(y_left, y_mid, y_right, bottom=0, width=AW):
     p.curveTo(width * .75, y_mid, width * .85, y_right + 10, width, y_right)
     p.lineTo(width, bottom)
     p.close()
+    fc("hills")
     draw(p)
 
 
@@ -282,9 +356,11 @@ def robe_path(x, y, h, flare=0.27, top=0.76, wavy=False):
 
 
 def robe(x, y, h, flare=0.27, wavy=False, belt=True):
+    fc("robe")
     draw(robe_path(x, y, h, flare, wavy=wavy))
     if belt:
         def band():
+            fc("belt")
             rect(x - .4 * h, y + .44 * h, .8 * h, .055 * h)
         clipped(lambda: robe_path(x, y, h, flare, wavy=wavy), band)
     lw(2)
@@ -296,6 +372,7 @@ def robe(x, y, h, flare=0.27, wavy=False, belt=True):
 
 
 def arms(x, y, h, mode):
+    fc("sleeve")
     if mode in ("fold", "pray", "gift"):
         p = P()
         p.moveTo(x - .17 * h, y + .72 * h)
@@ -306,6 +383,7 @@ def arms(x, y, h, mode):
         p.curveTo(x - .06 * h, y + .62 * h, x - .12 * h, y + .7 * h, x - .17 * h, y + .72 * h)
         p.close()
         draw(p)
+        fc("skin")
         if mode == "pray":
             ellipse(x, y + .6 * h, .028 * h, .06 * h)
             lw(1.5)
@@ -317,17 +395,21 @@ def arms(x, y, h, mode):
         m = mode
         if mode == "trumpet":
             m = "up" if side == 1 else "out"
+        fc("sleeve")
         if m == "up":
             poly([(x + side * .1 * h, y + .73 * h), (x + side * .3 * h, y + .95 * h),
                   (x + side * .24 * h, y + 1.0 * h), (x + side * .05 * h, y + .64 * h)])
+            fc("skin")
             circle(x + side * .29 * h, y + 1.0 * h, .03 * h)
         elif m == "out":
             poly([(x + side * .11 * h, y + .74 * h), (x + side * .33 * h, y + .56 * h),
                   (x + side * .3 * h, y + .5 * h), (x + side * .09 * h, y + .62 * h)])
+            fc("skin")
             circle(x + side * .33 * h, y + .52 * h, .03 * h)
 
 
 def crown(x, hy, hr, kind):
+    fc("crown")
     if kind == "points":
         y0 = hy + hr * .55
         poly([(x - hr * .85, y0), (x - hr * .85, y0 + hr * .95), (x - hr * .42, y0 + hr * .5),
@@ -355,6 +437,7 @@ def crown(x, hy, hr, kind):
 
 
 def gift_small(x, y, s, kind):
+    fc("gift")
     if kind == "box":
         rect(x - s * .5, y - s * .45, s, s * .8)
         rect(x - s * .1, y - s * .45, s * .2, s * .8)
@@ -395,8 +478,9 @@ def person(x, y, h, hood=False, beard=False, crown_kind=None, staff=False, halo=
             p.lineTo(sx, y + .95 * h)
             p.curveTo(sx, y + 1.03 * h, sx - .1 * h, y + 1.03 * h, sx - .1 * h, y + .96 * h)
             c.drawPath(p, stroke=1, fill=0)
-        hollow(crook, 10)
+        hollow(crook, 10, "staff")
     if halo:
+        fc("halo")
         circle(x, hy + .01 * h, hr * 1.65)
     if hood:
         p = P()
@@ -412,15 +496,19 @@ def person(x, y, h, hood=False, beard=False, crown_kind=None, staff=False, halo=
         p.close()
     robe(x, y, h)
     if hood or headcloth:
+        fc("hood")
         draw(p)
     arms(x, y, h, "fold" if gift else arm_mode)
+    fc("skin")
     circle(x, hy, hr)
     if headcloth:
+        fc("hood")
         p = P()
         p.moveTo(x - hr * 1.08, hy + hr * .3)
         p.curveTo(x - hr * 1.1, hy + hr * 1.5, x + hr * 1.1, hy + hr * 1.5, x + hr * 1.08, hy + hr * .3)
         p.close()
         draw(p)
+        fc("belt")
         rect(x - hr * 1.12, hy + hr * .25, hr * 2.24, hr * .3, hr * .1)
     face(x, hy, hr, smile=smile and not beard)
     if beard:
@@ -429,6 +517,7 @@ def person(x, y, h, hood=False, beard=False, crown_kind=None, staff=False, halo=
         p.curveTo(x - hr * .9, hy - hr * 1.5, x + hr * .9, hy - hr * 1.5, x + hr * .95, hy - hr * .05)
         p.curveTo(x + hr * .55, hy - hr * .55, x - hr * .55, hy - hr * .55, x - hr * .95, hy - hr * .05)
         p.close()
+        fc("beard")
         draw(p)
         lw(2)
         arc(x, hy - hr * .55, hr * .22, 200, 140)
@@ -447,6 +536,7 @@ def wing(h):
            (-.14 * h, -.2 * h), (-.03 * h, -.24 * h)]
     scallops(p, pts, 0.32)
     p.close()
+    fc("wing")
     draw(p)
     lw(2)
     c.bezier(-.04 * h, 0, -.12 * h, .17 * h, -.3 * h, .2 * h, -.42 * h, .14 * h)
@@ -469,10 +559,13 @@ def angel(x, y, h, arm_mode="up"):
     lw(LW)
     arms(x, y, h, arm_mode)
     blob([(x, hy + hr * .15, hr * 1.18), (x - hr * .9, hy - hr * .3, hr * .45),
-          (x + hr * .9, hy - hr * .3, hr * .45)])
+          (x + hr * .9, hy - hr * .3, hr * .45)], "hair")
+    fc("skin")
     circle(x, hy, hr)
     face(x, hy, hr)
+    fc("halo")
     ellipse(x, hy + hr * 1.6, hr * .95, hr * .3)
+    fc("halo_in")
     ellipse(x, hy + hr * 1.6, hr * .6, hr * .14)
     if arm_mode == "trumpet":
         ax_, ay_ = x + .03 * h, y + .82 * h
@@ -483,39 +576,46 @@ def angel(x, y, h, arm_mode="up"):
         nx, ny = -uy, ux
         t, b = .014 * h, .07 * h
         m = .68
+        fc("trumpet")
         mx, my = ax_ + dx * m, ay_ + dy * m
         poly([(ax_ + nx * t, ay_ + ny * t), (mx + nx * t, my + ny * t), (bx_ + nx * b, by_ + ny * b),
               (bx_ - nx * b, by_ - ny * b), (mx - nx * t, my - ny * t), (ax_ - nx * t, ay_ - ny * t)])
         rellipse(bx_, by_, .022 * h, b, math.degrees(math.atan2(dy, dx)))
+        fc("skin")
         circle(x + .29 * h, y + 1.0 * h, .03 * h)
 
 
 def baby(cx, cy, s, halo=True):
     if halo:
+        fc("halo")
         circle(cx - .27 * s, cy + .04 * s, .15 * s)
+    fc("swaddle")
     ellipse(cx + .05 * s, cy, .3 * s, .1 * s)
     lw(2)
     for dx in (-.05, .08, .2):
         c.bezier(cx + dx * s, cy + .1 * s, cx + (dx + .04) * s, cy + .03 * s,
                  cx + (dx + .04) * s, cy - .03 * s, cx + dx * s, cy - .1 * s)
     lw(LW)
+    fc("skin")
     circle(cx - .27 * s, cy + .03 * s, .09 * s)
     face(cx - .27 * s, cy + .03 * s, .09 * s, closed=True)
 
 
 def manger(cx, y, w, with_baby=True):
     for side in (-1, 1):
-        hollow(lambda: line(cx + side * .42 * w, y, cx + side * .2 * w, y + .4 * w), 10)
-        hollow(lambda: line(cx + side * .2 * w, y, cx + side * .42 * w, y + .4 * w), 10)
+        hollow(lambda: line(cx + side * .42 * w, y, cx + side * .2 * w, y + .4 * w), 10, "wood")
+        hollow(lambda: line(cx + side * .2 * w, y, cx + side * .42 * w, y + .4 * w), 10, "wood")
     pts = [(cx - .48 * w, y + .55 * w)]
     n = 12
     for i in range(1, n):
         px = cx - .48 * w + i * .96 * w / n
         pts.append((px, y + (.7 if i % 2 else .6) * w))
     pts.append((cx + .48 * w, y + .55 * w))
+    fc("hay")
     poly(pts)
     if with_baby:
         baby(cx + .02 * w, y + .62 * w, w)
+    fc("wood")
     poly([(cx - .52 * w, y + .57 * w), (cx + .52 * w, y + .57 * w),
           (cx + .4 * w, y + .3 * w), (cx - .4 * w, y + .3 * w)])
     lw(2)
@@ -532,17 +632,20 @@ def sheep(x, y, s, flip=False, lying=False):
         c.scale(-1, 1)
     by = .3 * s if lying else .55 * s
     if not lying:
+        fc("legs")
         for lx in (-.36, -.16, .2, .38):
             rect((lx - .05) * s, 0, .1 * s, .38 * s, .04 * s)
+    fc("wool")
     circle(-.64 * s, by + .08 * s, .1 * s)
     blob([(-.45 * s, by, .2 * s), (-.25 * s, by + .2 * s, .22 * s), (0, by + .25 * s, .22 * s),
           (.25 * s, by + .2 * s, .22 * s), (.45 * s, by, .2 * s), (.25 * s, by - .18 * s, .2 * s),
-          (0, by - .2 * s, .2 * s), (-.25 * s, by - .18 * s, .2 * s), (0, by, .3 * s)])
+          (0, by - .2 * s, .2 * s), (-.25 * s, by - .18 * s, .2 * s), (0, by, .3 * s)], "wool")
+    fc("sheepface")
     rellipse(.48 * s, by + .22 * s, .12 * s, .05 * s, 20)
     rellipse(.78 * s, by + .22 * s, .12 * s, .05 * s, -20)
     ellipse(.63 * s, by + .1 * s, .15 * s, .2 * s)
     blob([(.56 * s, by + .3 * s, .07 * s), (.63 * s, by + .33 * s, .07 * s),
-          (.7 * s, by + .3 * s, .07 * s)])
+          (.7 * s, by + .3 * s, .07 * s)], "wool")
     dot(.57 * s, by + .13 * s, .022 * s)
     dot(.69 * s, by + .13 * s, .022 * s)
     lw(2)
@@ -556,13 +659,16 @@ def donkey(x, y, s, flip=False):
     c.translate(x, y)
     if flip:
         c.scale(-1, 1)
-    hollow(lambda: c.bezier(-.48 * s, .82 * s, -.6 * s, .8 * s, -.62 * s, .6 * s, -.6 * s, .48 * s), 9)
+    fc("donkey")
+    hollow(lambda: c.bezier(-.48 * s, .82 * s, -.6 * s, .8 * s, -.62 * s, .6 * s, -.6 * s, .48 * s), 9, "donkey")
+    fc("donkey")
     rellipse(-.6 * s, .44 * s, .04 * s, .08 * s, 0)
     for lx in (-.38, -.24, .22, .36):
         rect((lx - .045) * s, 0, .09 * s, .62 * s, .03 * s)
         lw(2)
         line((lx - .045) * s, .07 * s, (lx + .045) * s, .07 * s)
         lw(LW)
+    fc("donkey")
     rellipse(.5 * s, 1.43 * s, .045 * s, .17 * s, 20)
     rellipse(.62 * s, 1.42 * s, .045 * s, .17 * s, -5)
     poly([(.28 * s, .86 * s), (.48 * s, 1.27 * s), (.66 * s, 1.2 * s), (.52 * s, .72 * s)])
@@ -572,8 +678,10 @@ def donkey(x, y, s, flip=False):
         bx, by = .28 + t * .2, .86 + t * .41
         pts.append(((bx - (.035 if i % 2 else 0)) * s, (by + (.02 if i % 2 else 0)) * s))
     poly(pts, close=False)
+    fc("donkey")
     ellipse(0, .78 * s, .52 * s, .25 * s)
     rellipse(.66 * s, 1.18 * s, .22 * s, .11 * s, -35)
+    fc("muzzle")
     rellipse(.81 * s, 1.04 * s, .1 * s, .085 * s, -35)
     dot(.6 * s, 1.27 * s, .022 * s)
     dot(.84 * s, 1.02 * s, .015 * s)
@@ -617,6 +725,7 @@ def stable(x0, y0, w, h):
         p.lineTo(x0 + w, y0)
         p.close()
         return p
+    fc("wall")
     draw(wall())
 
     def planks():
@@ -626,8 +735,10 @@ def stable(x0, y0, w, h):
             line(px, y0, px, y0 + h)
         lw(LW)
     clipped(wall, planks)
+    fc("wood")
     rect(x0, y0, .05 * w, .72 * h)
     rect(x0 + .95 * w, y0, .05 * w, .72 * h)
+    fc("roof")
     poly([(x0 - .07 * w, y0 + .7 * h), (x0 + .5 * w, y0 + h), (x0 + 1.07 * w, y0 + .7 * h),
           (x0 + 1.04 * w, y0 + .63 * h), (x0 + .5 * w, y0 + .91 * h), (x0 - .04 * w, y0 + .63 * h)])
     lw(1.8)
@@ -641,14 +752,17 @@ def stable(x0, y0, w, h):
 
 
 def house(x, y, w, h, dome=False):
+    fc("dome")
     if dome:
         p = P()
         p.moveTo(x + .1 * w, y + h)
         p.curveTo(x + .1 * w, y + h + .55 * w, x + .9 * w, y + h + .55 * w, x + .9 * w, y + h)
         p.close()
         draw(p)
+    fc("house")
     rect(x, y, w, h)
     rect(x - 2, y + h - 5, w + 4, 6)
+    fc("door")
     ww = w * .22
     p = P()
     p.moveTo(x + w * .5 - ww * .7, y)
@@ -667,6 +781,7 @@ def palm(x, y, h):
     p.lineTo(x + .1 * h, y + .9 * h)
     p.curveTo(x + .07 * h, y + .7 * h, x + .05 * h, y + .4 * h, x + .05 * h, y)
     p.close()
+    fc("trunk")
     draw(p)
     lw(2)
     for i in range(1, 9):
@@ -685,11 +800,13 @@ def palm(x, y, h):
         p.curveTo(.3 * L, .25 * L, .75 * L, .2 * L, L, -.12 * L)
         p.curveTo(.7 * L, 0, .3 * L, -.05 * L, 0, 0)
         p.close()
+        fc("frond")
         draw(p)
         lw(1.8)
         c.bezier(0, 0, .3 * L, .1 * L, .7 * L, .08 * L, L, -.12 * L)
         lw(LW)
         c.restoreState()
+    fc("coconut")
     for dx, dy in ((-.03, -.03), (.03, -.05), (.0, -.08)):
         circle(tx + dx * h, ty + dy * h, .035 * h)
 
@@ -865,7 +982,7 @@ def crescent(cx, cy, R):
 
 # ---------------------------------------------------------------- page chrome
 
-def bubble_text(x, y, text, size, font="Helvetica-Bold", width=2.2, space=1.5):
+def bubble_text(x, y, text, size, font="Title", width=2.2, space=1.5):
     c.saveState()
     tw = c.stringWidth(text, font, size) + space * (len(text) - 1)
     t = c.beginText()
@@ -882,7 +999,7 @@ def bubble_text(x, y, text, size, font="Helvetica-Bold", width=2.2, space=1.5):
 
 
 def fit_bubble(x, y, text, size, maxw, **kw):
-    font = kw.get("font", "Helvetica-Bold")
+    font = kw.get("font", "Title")
     while c.stringWidth(text, font, size) + 1.5 * len(text) > maxw and size > 14:
         size -= 1
     bubble_text(x, y, text, size, **kw)
@@ -909,7 +1026,7 @@ def frame(num=None):
     for x, y in ((24, 24), (W - 24, 24), (24, H - 24), (W - 24, H - 24)):
         star(x, y, 12)
     if num:
-        plain(W / 2, 31, f"{num}", "Helvetica", 9)
+        plain(W / 2, 31, f"{num}", "Sans", 9)
 
 
 def verse_box(verse, ref, theme, question):
@@ -918,26 +1035,26 @@ def verse_box(verse, ref, theme, question):
     c.roundRect(x, y, w, h, 14, stroke=1, fill=0)
     lw(LW)
     label = f"THEME: {theme.upper()}"
-    lwid = c.stringWidth(label, "Helvetica-Bold", 13) + 30
+    lwid = c.stringWidth(label, "Sans-Bold", 13) + 30
     lw(2.5)
     rect(x + 20, y + h - 14, lwid, 28, 14)
     lw(LW)
-    plain(x + 20 + lwid / 2, y + h - 4.5, label, "Helvetica-Bold", 13)
+    plain(x + 20 + lwid / 2, y + h - 4.5, label, "Sans-Bold", 13)
     star(x + w - 30, y + h, 12)
 
     size = 17
     while True:
-        lines = simpleSplit(f"“{verse}”", "Times-Italic", size, w - 50)
-        qlines = simpleSplit("Think about it: " + question, "Helvetica", 12, w - 70)
+        lines = simpleSplit(f"“{verse}”", "Serif-Italic", size, w - 50)
+        qlines = simpleSplit("Think about it: " + question, "Sans", 12, w - 70)
         need = len(lines) * size * 1.22 + 22 + len(qlines) * 15 + 34
         if need <= h - 10 or size <= 12:
             break
         size -= 0.5
     ty = y + h - 30 - size * .8
     for ln in lines:
-        plain(W / 2, ty, ln, "Times-Italic", size)
+        plain(W / 2, ty, ln, "Serif-Italic", size)
         ty -= size * 1.22
-    plain(x + w - 26, ty - 2, f"— {ref} (KJV)", "Helvetica-Bold", 12.5, align="right")
+    plain(x + w - 26, ty - 2, f"— {ref} (KJV)", "Sans-Bold", 12.5, align="right")
     qy = y + 14 + (len(qlines) - 1) * 15
     lw(1.5)
     c.line(x + 24, qy + 20, x + w - 24, qy + 20)
@@ -946,18 +1063,18 @@ def verse_box(verse, ref, theme, question):
     for i, ln in enumerate(qlines):
         if i == 0:
             c.setFillColor(black)
-            c.setFont("Helvetica-Bold", 12)
+            c.setFont("Sans-Bold", 12)
             c.drawString(x + 48, qy, "Think about it:")
-            off = c.stringWidth("Think about it: ", "Helvetica-Bold", 12)
-            c.setFont("Helvetica", 12)
+            off = c.stringWidth("Think about it: ", "Sans-Bold", 12)
+            c.setFont("Sans", 12)
             c.drawString(x + 48 + off, qy, ln[len("Think about it: "):])
             c.setFillColor(white)
         else:
-            plain(x + 48, qy - i * 15, ln, "Helvetica", 12, align="left")
+            plain(x + 48, qy - i * 15, ln, "Sans", 12, align="left")
 
 
 def verse_page(num, title, verse, ref, theme, question, art):
-    reset()
+    start()
     frame(num)
     fit_bubble(W / 2, 712, title, 38, W - 90)
     c.saveState()
@@ -970,7 +1087,7 @@ def verse_page(num, title, verse, ref, theme, question, art):
     c.restoreState()
     reset()
     verse_box(verse, ref, theme, question)
-    c.showPage()
+    end_page()
 
 
 # ---------------------------------------------------------------- scenes
@@ -982,7 +1099,7 @@ def art_promise():
     dove(80, 360, 45)
     scroll(256, 190, 270, 240)
     for i, word in enumerate(("Wonderful", "Counsellor", "The Mighty God", "Prince of Peace")):
-        bubble_text(256, 268 - i * 52, word, 30, font="Times-Bold", width=1.8, space=1)
+        bubble_text(256, 268 - i * 52, word, 30, font="Serif-Bold", width=1.8, space=1)
     holly(40, 20, 50)
     holly(472, 20, 50, flip=True)
 
@@ -1139,11 +1256,11 @@ def art_love():
 
 # ---------------------------------------------------------------- special pages
 
-def cover():
-    reset()
+def title_page():
+    start()
     frame()
     bubble_text(W / 2, 690, "Jesus Is Born!", 64, width=3)
-    plain(W / 2, 652, "A Christmas Coloring Book of Bible Verses", "Helvetica-Bold", 18)
+    plain(W / 2, 652, "A Christmas Coloring Book of Bible Verses", "Sans-Bold", 18)
     c.saveState()
     c.translate(AX, 190)
     reset()
@@ -1165,10 +1282,10 @@ def cover():
     lw(LW)
     for i, ln in enumerate(simpleSplit(
             "“For unto you is born this day in the city of David a Saviour, "
-            "which is Christ the Lord.”", "Times-Italic", 18, W - 190)):
-        plain(W / 2, 128 - i * 23, ln, "Times-Italic", 18)
-    plain(W / 2, 74, "— Luke 2:11", "Helvetica-Bold", 13)
-    c.showPage()
+            "which is Christ the Lord.”", "Serif-Italic", 18, W - 190)):
+        plain(W / 2, 128 - i * 23, ln, "Serif-Italic", 18)
+    plain(W / 2, 74, "— Luke 2:11", "Sans-Bold", 13)
+    end_page()
 
 
 THEMES = [
@@ -1181,9 +1298,9 @@ THEMES = [
 ]
 
 
-def belongs_page():
-    reset()
-    frame(1)
+def belongs_page(num):
+    start()
+    frame(num)
     bubble_text(W / 2, 700, "This Book Belongs To:", 38)
     lw(2)
     line(110, 640, W - 110, 640)
@@ -1193,7 +1310,7 @@ def belongs_page():
     holly(70, 560, 45)
     holly(W - 70, 560, 45, flip=True)
 
-    plain(W / 2, 585, "The Christmas Story in 12 Pictures", "Helvetica-Bold", 18)
+    plain(W / 2, 585, "The Christmas Story in 12 Pictures", "Sans-Bold", 18)
     y = 552
     for i, (theme, title) in enumerate(THEMES):
         col = 0 if i < 6 else 1
@@ -1201,14 +1318,14 @@ def belongs_page():
         x = 75 + col * 245
         yy = y - row * 34
         circle(x + 10, yy + 4, 12)
-        plain(x + 10, yy, str(i + 1), "Helvetica-Bold", 11)
-        plain(x + 30, yy + 4, title, "Helvetica-Bold", 12, align="left")
-        plain(x + 30, yy - 10, f"Theme: {theme}", "Helvetica", 10, align="left")
+        plain(x + 10, yy, str(i + 1), "Sans-Bold", 11)
+        plain(x + 30, yy + 4, title, "Sans-Bold", 12, align="left")
+        plain(x + 30, yy - 10, f"Theme: {theme}", "Sans", 10, align="left")
 
     lw(2)
     c.roundRect(60, 60, W - 120, 270, 14, stroke=1, fill=0)
     lw(LW)
-    plain(W / 2, 302, "A Note for Parents & Teachers", "Helvetica-Bold", 16)
+    plain(W / 2, 302, "A Note for Parents & Teachers", "Sans-Bold", 16)
     note = ("Each page tells one part of the true Christmas story from the Bible. "
             "Before your child colors, read the verse aloud together. Talk about "
             "the theme word and the “Think about it” question at the bottom "
@@ -1218,65 +1335,65 @@ def belongs_page():
             "of the story and to write a Christmas prayer to Jesus. Scripture is quoted "
             "from the King James Version.")
     ty = 275
-    for ln in simpleSplit(note, "Helvetica", 12.5, W - 170):
-        plain(W / 2, ty, ln, "Helvetica", 12.5)
+    for ln in simpleSplit(note, "Sans", 12.5, W - 170):
+        plain(W / 2, ty, ln, "Sans", 12.5)
         ty -= 17
     plain(W / 2, 90, "“Glory to God in the highest!” — Luke 2:14",
-          "Times-Italic", 14)
-    c.showPage()
+          "Serif-Italic", 14)
+    end_page()
 
 
 def draw_page(num):
-    reset()
+    start()
     frame(num)
     fit_bubble(W / 2, 712, "Draw Your Favorite Part!", 38, W - 90)
     plain(W / 2, 680, "Draw your favorite part of the Christmas story inside the box.",
-          "Helvetica", 14)
+          "Sans", 14)
     lw(2.5)
     c.roundRect(60, 150, W - 120, 510, 16, stroke=1, fill=0)
     lw(LW)
     for x, y in ((60, 150), (W - 60, 150), (60, 660), (W - 60, 660)):
         star(x, y, 16)
-    plain(80, 110, "My picture is about:", "Helvetica-Bold", 14, align="left")
+    plain(80, 110, "My picture is about:", "Sans-Bold", 14, align="left")
     lw(2)
     line(230, 108, W - 80, 108)
     line(80, 75, W - 80, 75)
     lw(LW)
-    c.showPage()
+    end_page()
 
 
 def prayer_page(num):
-    reset()
+    start()
     frame(num)
     fit_bubble(W / 2, 712, "My Christmas Prayer", 40, W - 90)
     holly(70, 690, 40)
     holly(W - 70, 690, 40, flip=True)
     plain(W / 2, 670, "Write or draw a prayer to thank Jesus for coming to earth.",
-          "Helvetica", 14)
-    plain(90, 625, "Dear Jesus,", "Times-BoldItalic", 22, align="left")
+          "Sans", 14)
+    plain(90, 625, "Dear Jesus,", "Serif-BoldItalic", 22, align="left")
     lw(1.8)
     for i in range(8):
         y = 590 - i * 38
         c.setDash(4, 5)
         line(90, y, W - 90, y)
     c.setDash()
-    plain(W - 90, 270, "Love,  ____________________", "Times-BoldItalic", 20, align="right")
+    plain(W - 90, 270, "Love,  ____________________", "Serif-BoldItalic", 20, align="right")
     lw(2)
     c.roundRect(70, 60, W - 140, 175, 14, stroke=1, fill=0)
     lw(LW)
-    plain(W / 2, 208, "A Prayer to Pray Together", "Helvetica-Bold", 15)
+    plain(W / 2, 208, "A Prayer to Pray Together", "Sans-Bold", 15)
     prayer = ("Dear God, thank You for sending baby Jesus to be our Savior. "
               "Thank You that You are always with us. Help me to love others, "
               "share Your good news, and shine Your light this Christmas. "
               "Happy birthday, Jesus! In Jesus’ name, Amen.")
     ty = 182
-    for ln in simpleSplit(prayer, "Times-Italic", 16, W - 200):
-        plain(W / 2, ty, ln, "Times-Italic", 16)
+    for ln in simpleSplit(prayer, "Serif-Italic", 16, W - 200):
+        plain(W / 2, ty, ln, "Serif-Italic", 16)
         ty -= 21
     heart(110, 85, 14)
     heart(W - 110, 85, 14)
     star(W / 2, 82, 14)
-    c.showPage()
+    end_page()
 
 
 # ---------------------------------------------------------------- book
@@ -1358,22 +1475,95 @@ PAGES = [
 ]
 
 
-def build(path=OUT):
+def copyright_page(num, author):
+    start()
+    owner = f" {author}" if author else ""
+    lines = [
+        (f"{BOOK_TITLE} {BOOK_SUBTITLE}", "Sans-Bold", 12),
+        (f"Copyright \u00a9 {YEAR}{owner}. All rights reserved.", "Sans", 11),
+        ("", "Sans", 6),
+        ("No part of this book may be reproduced without written permission,", "Sans", 10),
+        ("except that a parent or teacher may copy pages for use with their own", "Sans", 10),
+        ("children or class.", "Sans", 10),
+        ("", "Sans", 6),
+        ("Scripture quotations are from the King James Version (public domain).", "Sans", 10),
+        ("", "Sans", 6),
+        ("Coloring tip: slip a sheet of paper behind the page when you use markers.", "Sans", 10),
+    ]
+    y = 230
+    for text, font, size in lines:
+        if text:
+            plain(W / 2, y, text, font, size)
+        y -= size + 6
+    star(W / 2, 260, 10)
+    plain(W / 2, 31, str(num), "Sans", 9)
+    end_page()
+
+
+def color_test_page(num):
+    """Back of a coloring page: soaks up marker bleed and lets kids try colors."""
+    start()
+    plain(W / 2, 700, "Test Your Colors Here", "Round", 20)
+    plain(W / 2, 680, "Try your crayons, pencils, or markers in the shapes below.", "Sans", 11)
+    lw(2)
+    for i in range(12):
+        col, row = i % 4, i // 4
+        x, y = 156 + col * 100, 600 - row * 100
+        if i % 3 == 0:
+            circle(x, y, 32)
+        elif i % 3 == 1:
+            star(x, y, 38, 17)
+        else:
+            heart(x, y + 10, 30)
+    lw(LW)
+    plain(W / 2, 290, "\u201cFor God so loved the world\u2026\u201d \u2014 John 3:16", "Serif-Italic", 14)
+    plain(W / 2, 31, str(num), "Sans", 9)
+    end_page()
+
+
+def last_page(num):
+    start()
+    frame(num)
+    bubble_text(W / 2, 560, "Merry Christmas!", 56, width=2.6)
+    bubble_text(W / 2, 470, "Jesus Loves You!", 44, width=2.4)
+    heart(W / 2, 360, 50)
+    for x, y in ((150, 380), (W - 150, 380), (200, 300), (W - 200, 300)):
+        star(x, y, 18)
+    plain(W / 2, 220, "\u201cWe love him, because he first loved us.\u201d", "Serif-Italic", 18)
+    plain(W / 2, 196, "\u2014 1 John 4:19", "Sans-Bold", 13)
+    end_page()
+
+
+def build(path=OUT, author=""):
+    """Lay out the KDP interior. Coloring pages fall on right-hand (odd) pages."""
     global c
-    c = canvas.Canvas(path, pagesize=letter)
-    c.setTitle("Jesus Is Born! A Christmas Coloring Book of Bible Verses")
+    register_fonts()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    c = canvas.Canvas(path, pagesize=letter, initialFontName="Sans")
+    c.setTitle(f"{BOOK_TITLE} {BOOK_SUBTITLE}")
+    c.setAuthor(author or BOOK_TITLE)
     c.setSubject("Christian Christmas coloring book for kids with KJV Bible verses")
-    cover()
-    belongs_page()
-    num = 2
+    title_page()                     # 1
+    copyright_page(2, author)        # 2
+    belongs_page(3)                  # 3
+    color_test_page(4)               # 4
+    num = 5
     for title, verse, ref, theme, q, art in PAGES:
         verse_page(num, title, verse, ref, theme, q, art)
-        num += 1
-    draw_page(num)
-    prayer_page(num + 1)
+        color_test_page(num + 1)
+        num += 2
+    draw_page(num)                   # 29
+    color_test_page(num + 1)         # 30
+    prayer_page(num + 2)             # 31
+    last_page(num + 3)               # 32
+    pages = c.getPageNumber() - 1
     c.save()
-    return path
+    return path, pages
 
 
 if __name__ == "__main__":
-    print("Wrote", build())
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--author", default="", help="name printed on the copyright page")
+    args = ap.parse_args()
+    out, pages = build(author=args.author)
+    print(f"Wrote {out} ({pages} pages)")
